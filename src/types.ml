@@ -42,7 +42,7 @@ type let_bind =
     New of ident * data_type * let_bind
   | Let of pattern * term * let_bind
   | Event of ident * term list * let_bind
-  | If of term * let_bind * let_bind * let_bind
+  | If of term * let_bind
   | LetEnd
 
 let rec binds = function
@@ -71,7 +71,7 @@ type local_type =
   | LBranch of principal * (pattern * local_type) list
   | LNew of ident * data_type * local_type
   | LLet of pattern * term * local_type
-  | LIf of term * local_type * local_type * local_type
+  | LIf of term * local_type
   | LEvent of ident * term list * local_type
   | LDefLocal of ident * ident list * local_type * local_type
   | LCallLocal of ident * term list * local_type
@@ -138,8 +138,7 @@ and show_let_bind = function
     New(name, data_type, letb) -> "  " ^ "new " ^ name ^ ";\n" ^ show_let_bind letb
   | Let(p, t, letb) -> "let " ^ show_pattern p ^ " = " ^ show_term t ^ " in\n" ^ show_let_bind letb
   | Event(f, args, letb) -> "event " ^ f ^ "("^ show_term_list args ^ ")\n" ^ show_let_bind letb
-  | If(cond, ifl, LetEnd, letb) -> "if (" ^ show_term cond ^ ") {\n" ^ show_let_bind ifl ^ "}\n" ^ show_let_bind letb
-  | If(cond, ifl, ifr, letb) -> "if (" ^ show_term cond ^ ") {\n" ^ show_let_bind ifl ^ "} else {\n" ^ show_let_bind ifr ^ "}" ^ show_let_bind letb
+  | If(cond, letb) -> "if (" ^ show_term cond ^ ") then\n" ^ show_let_bind letb
   | LetEnd -> ""
 
 (* Show global types *)

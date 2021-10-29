@@ -53,7 +53,7 @@ rule read =
   | "with"   { WITH }
   | "data"   { DATA }
   | "if"     { IF }
-  | "else"   { ELSE }
+  | "then"   { THEN }
   | "dishonest" { DISHONEST }
   | "Problem" { PROBLEM }
   | "Principals" { PRINCIPALS }

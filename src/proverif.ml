@@ -25,6 +25,16 @@ and show_equation_params equation names_and_types =
       List.map (fun (a,b) -> a ^ ": " ^ b) 
         (List.sort_uniq (fun (a,_) (c,_) -> compare a c) (List.merge (fun _ _ -> 0) (build_equation_params t1 0 [] names_and_types) (build_equation_params t2 0 [] names_and_types))))
 
+let rec show_term = function
+    Var(x) -> x
+  | Func(name, args) -> name ^ "(" ^ show_term_list args ^ ")"
+  | Form(name, args) -> name ^ "(" ^ show_term_list args ^ ")"
+  | Tuple(args) -> "(" ^ show_term_list args ^ ")"
+  | Eq(t1, t2) -> show_term t1 ^ " = " ^ show_term t2
+  | And(t1, t2) -> show_term t1 ^ " && " ^ show_term t2
+  | Or(t1, t2) -> show_term t1 ^ " || " ^ show_term t2
+  | Not(t) -> "not(" ^ show_term t ^ ")"
+
 and show_equation equation names_and_types =
   match equation with
   | (t1, t2) -> "equation forall " ^ (show_equation_params equation names_and_types) ^ ";\n\t" ^ (show_term t1) ^ " = " ^ (show_term t2)
@@ -33,8 +43,7 @@ and show_local_type = function
     LSend(p, t, local_type) -> "\tout(c, " ^ show_term t  ^");\n"^ show_local_type local_type
   | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type local_type
   | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type local_type
-  | LIf(cond, ifl, LLocalEnd, letb) -> "\tif (" ^ show_term cond ^ ") then\n" ^ show_if_local_type 1 ifl ^ "\n" ^ show_local_type letb
-  | LIf(cond, ifl, ifr, letb) -> "\tif (" ^ show_term cond ^ ") then\n" ^ show_if_local_type 1 ifl ^ "\n\telse\n" ^ show_if_local_type 1 ifr ^ show_local_type letb
+  | LIf(cond, letb) -> "\tif (" ^ show_term cond ^ ") then\n" ^ show_if_local_type 1 letb
   | LRecv (principal, pattern, term, local_type) -> "\tin(c, " ^ show_pattern pattern ^ ": bitstring);\n" ^ show_local_type local_type
   | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type local_type
   | LLocalEnd -> "\t0."
@@ -45,11 +54,10 @@ and show_if_local_type i lt =
   | LSend(p, t, local_type) -> "out(c, " ^ show_term t  ^");\n"^ show_if_local_type i local_type
   | LNew (ident, data_type, local_type) -> "new " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_if_local_type i local_type
   | LLet (ident, term, local_type) -> "let " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_if_local_type i local_type
-  | LIf(cond, ifl, LLocalEnd, letb) -> "if (" ^ show_term cond ^ ") then\n" ^ show_if_local_type (i+1) ifl ^ "\n"
-  | LIf(cond, ifl, ifr, letb) -> "if (" ^ show_term cond ^ ") then\n" ^ show_if_local_type (i+1) ifl ^ "\n" ^ "\t" ^ String.make i '\t' ^ "else\n" ^ show_if_local_type (i+1) ifr
+  | LIf(cond, letb) -> "if (" ^ show_term cond ^ ") then\n" ^ show_if_local_type (i+1) letb
   | LRecv (principal, pattern, term, local_type) -> "in(c, " ^ show_pattern pattern ^ ": bitstring);\n" ^ show_if_local_type i local_type
   | LEvent (ident, termlist, local_type) -> "event " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_if_local_type i local_type
-  | LLocalEnd -> "0\n"
+  | LLocalEnd -> "0."
 
 and show_format = function
   (name, types) -> "fun " ^ name ^ "(" ^ (String.concat ", " (List.map (fun t -> show_dtype t) types)) ^ "): bitstring [data]."
