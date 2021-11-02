@@ -29,25 +29,31 @@ and show_equation equation names_and_types =
   match equation with
   | (t1, t2) -> "equation forall " ^ (show_equation_params equation names_and_types) ^ ";\n\t" ^ (show_term t1) ^ " = " ^ (show_term t2)
 
+and show_channel parties = function
+  Public -> "c"
+  | Auth -> "c_" ^ parties ^ "_auth"
+  | Conf -> "c_" ^ parties ^ "_conf"
+  | AuthConf -> "c_" ^ parties ^ "_authconf"
+
 and show_local_type = function
-    LSend(p, t, local_type) -> "\tout(c, " ^ show_term t  ^");\n"^ show_local_type local_type
+    LSend(ident, opt, t, local_type) -> "\tout(" ^ show_channel ident opt ^ ", " ^ show_term t  ^");\n"^ show_local_type local_type
   | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type local_type
   | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type local_type
   | LIf(cond, ifl, LLocalEnd, letb) -> "\tif (" ^ show_term cond ^ ") then\n" ^ show_if_local_type 1 ifl ^ "\n" ^ show_local_type letb
   | LIf(cond, ifl, ifr, letb) -> "\tif (" ^ show_term cond ^ ") then\n" ^ show_if_local_type 1 ifl ^ "\n\telse\n" ^ show_if_local_type 1 ifr ^ show_local_type letb
-  | LRecv (principal, pattern, term, local_type) -> "\tin(c, " ^ show_pattern pattern ^ ": bitstring);\n" ^ show_local_type local_type
+  | LRecv (ident, opt, pattern, term, local_type) -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ": bitstring);\n" ^ show_local_type local_type
   | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type local_type
   | LLocalEnd -> "\t0."
 
   
 and show_if_local_type i lt =
   "\t" ^ String.make i '\t' ^ match lt with
-  | LSend(p, t, local_type) -> "out(c, " ^ show_term t  ^");\n"^ show_if_local_type i local_type
+  | LSend(_, opt, t, local_type) -> "out(c, " ^ show_term t  ^");\n"^ show_if_local_type i local_type
   | LNew (ident, data_type, local_type) -> "new " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_if_local_type i local_type
   | LLet (ident, term, local_type) -> "let " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_if_local_type i local_type
   | LIf(cond, ifl, LLocalEnd, letb) -> "if (" ^ show_term cond ^ ") then\n" ^ show_if_local_type (i+1) ifl ^ "\n"
   | LIf(cond, ifl, ifr, letb) -> "if (" ^ show_term cond ^ ") then\n" ^ show_if_local_type (i+1) ifl ^ "\n" ^ "\t" ^ String.make i '\t' ^ "else\n" ^ show_if_local_type (i+1) ifr
-  | LRecv (principal, pattern, term, local_type) -> "in(c, " ^ show_pattern pattern ^ ": bitstring);\n" ^ show_if_local_type i local_type
+  | LRecv (_, opt, pattern, term, local_type) -> "in(c, " ^ show_pattern pattern ^ ": bitstring);\n" ^ show_if_local_type i local_type
   | LEvent (ident, termlist, local_type) -> "event " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_if_local_type i local_type
   | LLocalEnd -> "0\n"
 
