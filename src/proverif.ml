@@ -72,10 +72,18 @@ and show_party_params = function
 and instantiate_party_process_vars party = function
   env -> String.concat "" (List.map (fun (i, _) -> ", " ^ i) (List.assoc party env))
 
+let rec build_channels acc = function
+    Send(sender, receiver, opt, _, _, g) -> build_channels (("\tnew " ^ (show_channel (if receiver < sender then receiver ^ sender else sender ^ receiver) opt) ^ ": channel;")::acc) g
+  | Compute(_, _, g) -> build_channels acc g
+  | DefGlobal(_, _, g, g') -> build_channels (build_channels acc g) g'
+  | _ -> List.sort_uniq (fun a b -> compare a b) acc
+
+
 let proverif (pr:problem): unit =
   let env = List.map (fun (p, x) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
-  Printf.printf  "(* Protocol: %s *)\n\n" pr.name;
   let function_types = List.map (fun f -> build_function f) pr.functions in
+  let channels = String.concat "\n" (build_channels [] pr.protocol) in
+  Printf.printf  "(* Protocol: %s *)\n\n" pr.name;
   List.iter (fun t -> 
     Printf.printf "type %s.\n" (show_dtype t)) pr.types;
   Printf.printf "%s\n" "";
@@ -89,4 +97,4 @@ let proverif (pr:problem): unit =
     Printf.printf "%s.\n" (show_equation e function_types)) pr.equations;
   Printf.printf "%s\n" "";
   List.iter (fun (p, b) -> Printf.printf "let %s(c: channel%s) = \n%s\n\n" p (show_party_params (List.assoc p env)) (show_local_type (to_local_type pr.protocol p))) pr.principals;
-  Printf.printf "process (\n\tnew c: channel;\n%s\n\t%s\n)" (show_env env) (String.concat " | " (List.map (fun (p, _) -> p ^ "(c" ^ (instantiate_party_process_vars p env) ^ ")") pr.principals))
+  Printf.printf "process (\n\tnew c: channel;\n%s\n%s\n\t%s\n)" channels (show_env env) (String.concat " | " (List.map (fun (p, _) -> p ^ "(c" ^ (instantiate_party_process_vars p env) ^ ")") pr.principals))
