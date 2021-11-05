@@ -9,6 +9,7 @@ type data_type =
     DType of ident
   | DAType of ident * ident
   | AType of ident
+  | None
 (* Terms *)
 type term =
     Var of ident
@@ -24,13 +25,13 @@ type term =
 type pattern =
     PVar of ident
   | PForm of ident * pattern list
-  | PMatch of term
+  | PMatch of term * data_type
   | PFunc of ident * pattern list
   | PTuple of pattern list
 
 let rec pattern_to_term = function
     PVar x -> Var x
-  | PMatch t -> t
+  | PMatch(t, _) -> t
   | PFunc(f, args) -> Func(f, List.map pattern_to_term args)
   | PTuple args -> Tuple(List.map pattern_to_term args)
 
@@ -47,7 +48,7 @@ type let_bind =
 
 let rec binds = function
     PVar x -> [x]
-  | PMatch t -> []
+  | PMatch(t, _) -> []
   | PFunc(_, args) | PForm(_, args) | PTuple args -> List.concat (List.map binds args)
 
 (* Channel options / Bullet notation *)
@@ -125,7 +126,7 @@ and show_pattern = function
   | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
-  | PMatch(t) -> "=" ^ show_term t
+  | PMatch(t, _) -> "=" ^ show_term t
 
 and show_pattern_list = function
     [] -> ""

@@ -21,7 +21,8 @@ and show_pattern = function
   | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
-  | PMatch(t) -> "=" ^ show_term t
+  | PMatch(t, None) -> "=" ^ show_term t
+  | PMatch(t, dt) -> show_term t ^ ": " ^ show_dtype dt
 
 and show_pattern_list = function
     [] -> ""

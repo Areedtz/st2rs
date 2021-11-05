@@ -32,7 +32,7 @@ and translatePattern pat (conditions : (term * term) list) =
     PVar(x) -> ((ID(x)), conditions)
   | PForm(fname, args) ->
     ((ID(fname)), (combineConditions args))
-  | PMatch(t) ->
+  | PMatch(t, _) ->
       let var = next_var() in
       (ID(var), (t, Var(var))::conditions)
 
@@ -67,7 +67,7 @@ and process = function
     let strPtn = StructPattern(ID(fname), pats) in
     if(conditions = []) then SDeclExp(PatrExp(strPtn, translateTerm term))::process local_type
     else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process local_type)))]
-  | LLet (PMatch(mat), term, local_type) ->
+  | LLet (PMatch(mat, None), term, local_type) ->
     [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process local_type)))]
   | LLet (ident, term, local_type) ->
     let patterns = translatePattern ident [] in
