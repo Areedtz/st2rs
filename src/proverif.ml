@@ -73,10 +73,11 @@ and instantiate_party_process_vars party = function
   env -> List.map (fun (i, _) -> i) (List.assoc party env)
 
 let rec build_channels acc = function
-    Send(sender, receiver, opt, _, _, g) ->
+    Send(sender, receiver, opt, _, _, g) when opt != Public ->
       let channel_name = show_channel (if receiver < sender then receiver ^ sender else sender ^ receiver) opt in
       let parties = (sender, receiver) in
       build_channels ((parties, channel_name)::acc) g
+  | Send(_, _, _, _, _, g) -> build_channels acc g
   | Compute(_, _, g) -> build_channels acc g
   | DefGlobal(_, _, g, g') -> build_channels (build_channels acc g) g'
   | _ -> List.sort_uniq (fun (_, a) (_, b) -> compare a b) acc
@@ -95,6 +96,7 @@ let proverif (pr:problem): unit =
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
   Printf.printf  "(* Protocol: %s *)\n\n" pr.name;
+  Printf.printf "channel c.%s\n\n" "";
   List.iter (fun t -> 
     Printf.printf "type %s.\n" (show_dtype t)) pr.types;
   Printf.printf "%s\n" "";
