@@ -33,15 +33,15 @@ Source {
     new msg: bitstring;
     let ct = encibe(pkibe(msk), uid, msg);
 }
-Source -> Investigator: x = M1<ct>
+Source *-> Investigator: x = M1<ct>
 Investigator {
     let M1<ct> = x;
     let blindid = blind(uid);
     let signedid = sign(isk, blindid);
     let zkp = pzkp(uid, isk, signedid);
 }
-Investigator -> Log: x = M2<signedid, zkp>
-Investigator -> Decryptor: x = M3<blindid>
+Investigator *-> Log: x = M2<signedid, zkp>
+Investigator *-> Decryptor: x = M3<blindid>
 Log {
     let M2<signedid, zkp> = x;
 }
@@ -53,7 +53,7 @@ Decryptor {
         let sk = blindextract(msk, blindid);
     }
 }
-Decryptor -> Investigator: z = M5<sk>
+Decryptor *-> Investigator: z = M5<sk>
 Investigator {
     let M5<sk> = z;
     let msg = decibe(ct, sk);
