@@ -90,6 +90,25 @@ let rec show_party_channels p acc suffix channels =
   | [x] -> acc
   | (_::xs) -> show_party_channels p acc suffix xs
 
+let build_if_types principals env functypes formtypes protocol = 
+  let rec inner pprot penv typesacc iftypesacc =
+    match pprot with (* let M1(gx) = a in*) (* let a = M1(gx) in out(c, a); *) (* out(c, M1(gx)); *)
+    | LSend(_, _, _, local_type) -> inner local_type penv iftypesacc
+    | LNew (ident, data_type, local_type) -> inner local_type ((ident, data_type)::penv) iftypesacc
+    | LLet (ident, term, local_type) -> 
+      match (ident, term) with
+      | (PVar(x), Var(y)) -> inner local_type
+      | (PVar(x), Form(y, _)) -> get return type of form
+      | (PVar(x), Func(y, _)) -> same as above
+      | (PForm(ident, xs), _) -> add all variables and types in xs
+      "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type local_type
+    | LIf(_, ift, _, local_type) -> inner local_type penv (::iftypesacc)
+    | LRecv (ident, _, pattern, _, local_type) -> inner local_type ((ident, data_type)::penv) iftypesacc (* We need to figure out the data type based on pattern *)
+    | LEvent (_, _, local_type) -> inner local_type penv iftypesacc
+    | LLocalEnd -> iftypesacc
+    
+  List.map (fun p -> (p, inner (to_local_type pr.protocol p) (List.assoc p env) [])) principals
+
 let proverif (pr:problem): unit =
   let env = List.map (fun (p, x) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
   let function_types = List.map (fun f -> build_function f) pr.functions in
