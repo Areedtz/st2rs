@@ -21,7 +21,7 @@ let rec show_term = function
   | And(t1, t2) -> show_term t1 ^ " && " ^ show_term t2
   | Or(t1, t2) -> show_term t1 ^ " || " ^ show_term t2
   | Not(t) -> "not(" ^ show_term t ^ ")"
-  | If(cond, tterm, fterm) -> "(if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ ")"
+  | If(cond, tterm, fterm) -> "( if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ " )"
 
 let rec build_equation_params t pos function_types names_and_types = (* [(var name, type)...] *)
   match (t, function_types) with
