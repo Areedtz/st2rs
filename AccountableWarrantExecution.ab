@@ -51,7 +51,6 @@ Decryptor {
     let M4<zkp> = y;
     checkzkp(pk(isk), blindid, zkp)
     let sk = blindextract(msk, blindid);
-    }
 }
 Decryptor *->* Investigator: z = M5<sk>
 Investigator {
