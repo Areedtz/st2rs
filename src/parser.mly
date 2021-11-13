@@ -91,7 +91,7 @@ pattern:
 | name = ID; COLON; dt = data_type
   { PVar(name, dt) }
 | PCT; t = term
-   { PMatch(t) }
+  { PMatch(t) }
 | name = ID; LEFT_PAR; pargs = pattern_list; RIGHT_PAR
   { PFunc(name, pargs) }
 | name = ID; LEFT_ANGLE; pargs = pattern_list; RIGHT_ANGLE
