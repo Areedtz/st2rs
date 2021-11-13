@@ -23,15 +23,15 @@ type term =
 
 (* Pattern *)
 type pattern =
-    PVar of ident
+    PVar of ident * data_type
   | PForm of ident * pattern list
-  | PMatch of term * data_type
+  | PMatch of term
   | PFunc of ident * pattern list
   | PTuple of pattern list
 
 let rec pattern_to_term = function
-    PVar x -> Var x
-  | PMatch(t, _) -> t
+    PVar(x, _) -> Var x
+  | PMatch t -> t
   | PFunc(f, args) -> Func(f, List.map pattern_to_term args)
   | PTuple args -> Tuple(List.map pattern_to_term args)
 
@@ -47,8 +47,8 @@ type let_bind =
   | LetEnd
 
 let rec binds = function
-    PVar x -> [x]
-  | PMatch(t, _) -> []
+    PVar(x, _) -> [x]
+  | PMatch t -> []
   | PFunc(_, args) | PForm(_, args) | PTuple args -> List.concat (List.map binds args)
 
 (* Channel options / Bullet notation *)
@@ -122,11 +122,11 @@ and show_term_list = function
   | (x::xs) -> show_term x ^ ", " ^ show_term_list xs
 
 and show_pattern = function
-    PVar(x) -> x
+    PVar(x, _) -> x
   | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
-  | PMatch(t, _) -> "=" ^ show_term t
+  | PMatch(t) -> "=" ^ show_term t
 
 and show_pattern_list = function
     [] -> ""

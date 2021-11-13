@@ -87,11 +87,11 @@ data_type_list:
 pattern:
 | LEFT_PAR; p = pattern; RIGHT_PAR {p}
 | name = ID
-  { PVar(name) }
-| PCT; EQ; t = term
-  { PMatch(t, None) }
-| PCT; t = term; COLON; dt = data_type
-  { PMatch(t, dt) }
+  { PVar(name, None) }
+| name = ID; COLON; dt = data_type
+  { PVar(name, dt) }
+| PCT; t = term
+   { PMatch(t) }
 | name = ID; LEFT_PAR; pargs = pattern_list; RIGHT_PAR
   { PFunc(name, pargs) }
 | name = ID; LEFT_ANGLE; pargs = pattern_list; RIGHT_ANGLE
