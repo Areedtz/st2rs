@@ -19,7 +19,7 @@ Bob {
 Bob -> Alice: b = M2<gy>
 Alice {
     let M2<gy> = b;
-    let gxy = exp(gy, x);
+    let gyx = exp(gy, x);
 }
 end
 
