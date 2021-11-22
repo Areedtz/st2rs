@@ -17,12 +17,12 @@ and show_term_list = function
   | (x::xs) -> show_term x ^ ", " ^ show_term_list xs
 
 and show_pattern = function
-    PVar(x) -> x
+    PVar(x, None) -> x
+  | PVar(x, dt) -> x ^ ": " ^ show_dtype dt
   | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
-  | PMatch(t, None) -> "=" ^ show_term t
-  | PMatch(t, dt) -> show_term t ^ ": " ^ show_dtype dt
+  | PMatch(t) -> "=" ^ show_term t
 
 and show_pattern_list = function
     [] -> ""
@@ -68,7 +68,7 @@ and unwrapGlobal global local =
 and to_local_type global_type participant =
   match global_type with
     Send(sender, receiver, opt, x, t, g) when participant = sender -> LSend((if receiver < sender then receiver ^ sender else sender ^ receiver), opt, t, to_local_type g participant)
-  | Send(sender, receiver, opt, x, t, g) when participant = receiver -> LRecv((if receiver < sender then receiver ^ sender else sender ^ receiver), opt, PVar(x), t, to_local_type g participant)
+  | Send(sender, receiver, opt, x, t, g) when participant = receiver -> LRecv((if receiver < sender then receiver ^ sender else sender ^ receiver), opt, PVar(x, None), t, to_local_type g participant)
   | Send(_, _, _, _, _, g) -> to_local_type g participant
   | Compute(p, letb, g) when participant = p -> local_let_bind letb (to_local_type g participant)
   | Compute(p, letb, g) -> (to_local_type g participant)
