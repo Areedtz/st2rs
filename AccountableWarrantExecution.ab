@@ -8,19 +8,19 @@ Knowledge: msk:skeyibe@Decryptor,
            isk:skey@Decryptor;
 Types: skeyibe, pkeyibe, skey, pkey, id, rand;
 Functions: pk(skey) -> pkey,
-           extract(skeyibe, id) -> skey,
            pkibe(skeyibe) -> pkeyibe,
            encibe(pkeyibe, id, bitstring) -> bitstring,
            decibe(bitstring, skey) -> bitstring,
            blind(id, rand) -> bitstring,
            partialextract(skeyibe, bitstring) -> bitstring,
            blindextract(rand, bitstring) -> skey,
+           extract(skeyibe, id) -> skey,
            sign(skey, bitstring) -> bitstring,
            checksign(pkey, bitstring) -> bitstring,
            pzkp(id, skey, bitstring) -> bitstring,
            checkzkp(pkey, bitstring, bitstring) -> bitstring,
            OK() -> bitstring;
-Equations: decibe(encibe(mpk, uid, msg), extract(msk, uid)) = msg,
+Equations: decibe(encibe(pkibe(msk), uid, msg), extract(msk, uid)) = msg,
            blindextract(r, partialextract(msk, blind(uid, r))) = extract(msk, uid),
            checksign(pk(sk), sign(sk, x)) = x,
            checkzkp(pk(sk), blind(uid, r), pzkp(uid, sk, sign(sk, blind(uid, r)))) = OK;
@@ -34,8 +34,8 @@ Source {
     new msg: bitstring;
     let ct = encibe(mpk, uid, msg);
 }
-Source -> Public: ct = ct
 Source *->* Investigator: x = M1<ct>
+Source -> Public: ct = ct
 Investigator {
     let M1<ct> = x;
     new r: rand;

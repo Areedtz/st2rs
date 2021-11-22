@@ -93,7 +93,7 @@ let proverif (pr:problem): unit =
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
   Printf.printf  "(* Protocol: %s *)\n\n" pr.name;
-  Printf.printf "channel c.%s\n\n" "";
+  Printf.printf "free c: channel.%s\n\n" "";
   List.iter (fun t -> 
     Printf.printf "type %s.\n" (show_dtype t)) pr.types;
   Printf.printf "%s\n" "";
