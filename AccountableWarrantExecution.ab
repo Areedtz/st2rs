@@ -1,42 +1,45 @@
 Problem: AccountableWarrantExecution;
-Principals: Source, Investigator, Decryptor, Log;
+Principals: Source, Investigator, Decryptor, Log, Public;
 Knowledge: msk:skeyibe@Decryptor, 
            uid:id@Investigator, 
            uid:id@Source, 
-           msk:skeyibe@Source,
+           mpk:pkeyibe@Source,
            isk:skey@Investigator,
            isk:skey@Decryptor;
-Types: skeyibe, pkeyibe, skey, pkey, id;
+Types: skeyibe, pkeyibe, skey, pkey, id, rand;
 Functions: pk(skey) -> pkey,
            extract(skeyibe, id) -> skey,
            pkibe(skeyibe) -> pkeyibe,
            encibe(pkeyibe, id, bitstring) -> bitstring,
            decibe(bitstring, skey) -> bitstring,
-           blind(id) -> bitstring,
-           blindextract(skeyibe, bitstring) -> skey,
+           blind(id, rand) -> bitstring,
+           partialextract(skeyibe, bitstring) -> bitstring,
+           blindextract(rand, bitstring) -> skey,
            sign(skey, bitstring) -> bitstring,
            checksign(pkey, bitstring) -> bitstring,
            pzkp(id, skey, bitstring) -> bitstring,
            checkzkp(pkey, bitstring, bitstring) -> bitstring,
            OK() -> bitstring;
 Equations: decibe(encibe(mpk, uid, msg), extract(msk, uid)) = msg,
-           blindextract(msk, blind(uid)) = extract(msk, uid),
+           blindextract(r, partialextract(msk, blind(uid, r))) = extract(msk, uid),
            checksign(pk(sk), sign(sk, x)) = x,
-           checkzkp(pk(sk), blind(uid), pzkp(uid, sk, sign(sk, blind(uid)))) = OK;
+           checkzkp(pk(sk), blind(uid, r), pzkp(uid, sk, sign(sk, blind(uid, r)))) = OK;
 Formats: M1(bitstring),
          M2(bitstring, bitstring),
          M3(bitstring),
          M4(bitstring),
-         M5(skey);
+         M5(bitstring);
 Protocol:
 Source {
     new msg: bitstring;
-    let ct = encibe(pkibe(msk), uid, msg);
+    let ct = encibe(mpk, uid, msg);
 }
+Source -> Public: ct = ct
 Source *->* Investigator: x = M1<ct>
 Investigator {
     let M1<ct> = x;
-    let blindid = blind(uid);
+    new r: rand;
+    let blindid = blind(uid, r);
     let signedid = sign(isk, blindid);
     let zkp = pzkp(uid, isk, signedid);
 }
@@ -49,13 +52,13 @@ Log -> Decryptor: y = M4<zkp>
 Decryptor {
     let M3<blindid> = x;
     let M4<zkp> = y;
-    if (checkzkp(pk(isk), blindid, zkp) = OK) {
-        let sk = blindextract(msk, blindid);
-    }
+    new sk': bitstring;
+    let psk = if(checkzkp(pk(isk), blindid, zkp) = OK, partialextract(msk, blindid), sk');
 }
-Decryptor *->* Investigator: z = M5<sk>
+Decryptor *->* Investigator: z = M5<psk>
 Investigator {
-    let M5<sk> = z;
+    let M5<psk> = z;
+    let sk = blindextract(r, psk);
     let msg = decibe(ct, sk);
 }
 end
