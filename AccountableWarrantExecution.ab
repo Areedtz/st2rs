@@ -1,64 +1,87 @@
 Problem: AccountableWarrantExecution;
-Principals: Source, Investigator, Decryptor, Log, Public;
-Knowledge: msk:skeyibe@Decryptor, 
-           uid:id@Investigator, 
-           uid:id@Source, 
-           mpk:pkeyibe@Source,
-           isk:skey@Investigator,
-           isk:skey@Decryptor;
-Types: skeyibe, pkeyibe, skey, pkey, id, rand;
-Functions: pk(skey) -> pkey,
-           pkibe(skeyibe) -> pkeyibe,
-           encibe(pkeyibe, id, bitstring) -> bitstring,
-           decibe(bitstring, skey) -> bitstring,
-           blind(id, rand) -> bitstring,
-           partialextract(skeyibe, bitstring) -> bitstring,
-           blindextract(rand, bitstring) -> skey,
-           extract(skeyibe, id) -> skey,
+Principals: Source, Court, Decryptor, Auditor, Public;
+Knowledge: msk:mskeyi@Decryptor, ska:skey@Auditor,
+           skd:skey@Decryptor, skc:skey@Court,
+           msg:bitstring@Source, id:bitstring@Source,
+           id:bitstring@Court;
+Types: pkey, skey, mpkeyi, mskeyi, skeyi, rand;
+Functions: OK() -> bitstring,
+           pk(skey) -> pkey,
+           enc(pkey, bitstring, rand) -> bitstring,
+           dec(skey, bitstring) -> bitstring,
            sign(skey, bitstring) -> bitstring,
-           checksign(pkey, bitstring) -> bitstring,
-           pzkp(id, skey, bitstring) -> bitstring,
-           checkzkp(pkey, bitstring, bitstring) -> bitstring,
-           OK() -> bitstring;
-Equations: decibe(encibe(pkibe(msk), uid, msg), extract(msk, uid)) = msg,
-           blindextract(r, partialextract(msk, blind(uid, r))) = extract(msk, uid),
-           checksign(pk(sk), sign(sk, x)) = x,
-           checkzkp(pk(sk), blind(uid, r), pzkp(uid, sk, sign(sk, blind(uid, r)))) = OK;
-Formats: M1(bitstring),
-         M2(bitstring, bitstring),
-         M3(bitstring),
-         M4(bitstring),
-         M5(bitstring);
+           checksign(bitstring, pkey) -> bitstring,
+           pkibe(mskeyi) -> mpkeyi,
+           encibe(mpkeyi, bitstring, bitstring) -> bitstring,
+           extract(mskeyi, bitstring) -> skeyi,
+           decibe(bitstring, skeyi) -> bitstring,
+           blind(bitstring, rand) -> bitstring,
+           pextract(mskeyi, bitstring) -> bitstring,
+           bextract(rand, bitstring) -> skeyi,
+           pzk(bitstring, rand) -> bitstring,
+           checkzkpok(bitstring, bitstring) -> bitstring,
+           pzkenc(bitstring, rand) -> bitstring,
+           checkzkpokenc(bitstring, bitstring) -> bitstring; 
+Equations: dec(k, enc(pk(k), m, r)) = m,
+           checksign(sign(ssk, m), pk(ssk)) = m,
+           decibe(encibe(pkibe(msk), idi, m), extract(msk, idi)) = m,
+           bextract(r, pextract(msk, blind(idi, r))) = extract(msk, idi),
+           checkzkpok(blind(idi, r), pzk(idi, r)) = OK,
+           checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK;
+Formats: PIBEFORM(mpkeyi), PFORM(pkey);
 Protocol:
+Decryptor -> Public: mpkform = PIBEFORM<pkibe(msk)>
+Auditor -> Public: pkaform = PFORM<pk(ska)>
+Decryptor -> Public: pkdform = PFORM<pk(skd)>
+Court -> Public: pkcform = PFORM<pk(skc)>
+Public -> Source: mpkform = mpkform
 Source {
-    new msg: bitstring;
-    let ct = encibe(mpk, uid, msg);
+    let PIBEFORM<mpk> = mpkform;
+    let ct = encibe(mpk, id, msg);
 }
-Source *->* Investigator: x = M1<ct>
+Source *->* Court: ct = ct
 Source -> Public: ct = ct
-Investigator {
-    let M1<ct> = x;
+Public -> Court: pkaform = pkaform
+Court {
+    let PFORM<pka> = pkaform;
     new r: rand;
-    let blindid = blind(uid, r);
-    let signedid = sign(isk, blindid);
-    let zkp = pzkp(uid, isk, signedid);
+    let ctc = enc(pka, id, r);
+    let signed_ctc = sign(skc, ctc);
 }
-Investigator *->* Log: x = M2<signedid, zkp>
-Investigator *->* Decryptor: x = M3<blindid>
-Log {
-    let M2<signedid, zkp> = x;
+Court *->* Auditor: ctcsign = signed_ctc
+Court {
+    new r2: rand;
+    let audit = enc(pka, <id, r>, r2);
+    let signed_audit = sign(skc, audit);
+    let b = blind(id, r);
 }
-Log -> Decryptor: y = M4<zkp>
+Court *->* Decryptor: drequest = <b, pzk(id, r), signed_ctc, signed_audit, pzkenc(id, r)>
+Public -> Decryptor: pkcform = pkcform
 Decryptor {
-    let M3<blindid> = x;
-    let M4<zkp> = y;
-    new sk': bitstring;
-    let psk = if(checkzkp(pk(isk), blindid, zkp) = OK, partialextract(msk, blindid), sk');
+    let PFORM<pkc> = pkcform;
+    let <b: bitstring, pzk: bitstring, signed_ctc: bitstring, signed_audit: bitstring, pzkenc: bitstring> = drequest;
+    let ctc = checksign(signed_ctc, pkc);
+    let audit = checksign(signed_audit, pkc);
+    new p': bitstring;
+    let partial = if(checkzkpokenc(ctc, pzkenc) = OK & checkzkpok(b, pzk) = OK, pextract(msk, b), p');
+    let dsign = sign(skd, <audit, ctc, pzkenc>);
 }
-Decryptor *->* Investigator: z = M5<psk>
-Investigator {
-    let M5<psk> = z;
-    let sk = blindextract(r, psk);
-    let msg = decibe(ct, sk);
+Decryptor *->* Court: partial = partial
+Decryptor *->* Auditor: dsign = dsign
+Court {
+    let sk = bextract(r, partial);
+    let m = decibe(ct, sk);
 }
+Auditor -> Public: something = <ctcsign, dsign>
+Public -> Auditor: pkcform = pkcform
+Public -> Auditor: pkdform = pkdform
+Auditor {
+    let PFORM<pkc> = pkcform;
+    let PFORM<pkd> = pkdform;
+    let ctc = checksign(ctcsign, pkc);
+    let id_ctc = dec(ska, ctc);
+    let <audit: bitstring, ctcd: bitstring, zkenc: bitstring> = checksign(dsign, pkd);
+    let <id_audit: bitstring, r: rand> = dec(ska, audit);
+}
+Auditor -> Public: somethingelse = <audit, ctcd, zkenc>
 end
