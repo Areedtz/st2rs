@@ -1,8 +1,7 @@
 Problem: AccountableWarrantExecution;
-Principals: Source, Court, Decryptor, Auditor, Public;
-Knowledge: msk:mskeyi@Decryptor, ska:skey@Auditor,
-           skd:skey@Decryptor, skc:skey@Court,
-           msg:bitstring@Source, id:bitstring@Source,
+Principals: Source, Court, Decryptor, Auditor, KeyDistributor, Public;
+Knowledge: msg:bitstring@Source, 
+           id:bitstring@Source,
            id:bitstring@Court;
 Types: pkey, skey, mpkeyi, mskeyi, skeyi, rand;
 Functions: OK() -> bitstring,
@@ -28,22 +27,44 @@ Equations: dec(k, enc(pk(k), m, r)) = m,
            bextract(r, pextract(msk, blind(idi, r))) = extract(msk, idi),
            checkzkpok(blind(idi, r), pzk(idi, r)) = OK,
            checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK;
-Formats: PIBEFORM(mpkeyi), PFORM(pkey);
+Formats: SKIBEFORM(mskeyi), PKIBEFORM(mpkeyi), PKFORM(pkey), PK2FORM(pkey, pkey), SKFORM(skey);
 Protocol:
-Decryptor -> Public: mpkform = PIBEFORM<pkibe(msk)>
-Auditor -> Public: pkaform = PFORM<pk(ska)>
-Decryptor -> Public: pkdform = PFORM<pk(skd)>
-Court -> Public: pkcform = PFORM<pk(skc)>
-Public -> Source: mpkform = mpkform
+KeyDistributor {
+    new msk: mskeyi;
+    new ska: skey;
+    new skc: skey;
+    new skd: skey;
+    let mpk = pkibe(msk);
+    let pka = pk(ska);
+    let pkc = pk(skc);
+    let pkd = pk(skd);
+}
+KeyDistributor *->* Auditor: skaform = SKFORM<ska>
+KeyDistributor *->* Auditor: pkcdform = PK2FORM<pkc, pkd>
+
+KeyDistributor *->* Court: skcform = SKFORM<skc>
+KeyDistributor *->* Court: pkaform = PKFORM<pka>
+
+KeyDistributor *->* Decryptor: mskform = SKIBEFORM<msk>
+KeyDistributor *->* Decryptor: skdform = SKFORM<skd>
+KeyDistributor *->* Decryptor: pkcform = PKFORM<pkc>
+
+KeyDistributor *->* Source: mpkform = PKIBEFORM<mpk>
+
+KeyDistributor -> Public: mpkform = PKIBEFORM<mpk>
+KeyDistributor -> Public: pkaform = PKFORM<pka>
+KeyDistributor -> Public: pkcform = PKFORM<pkc>
+KeyDistributor -> Public: pkdform = PKFORM<pkd>
+
 Source {
-    let PIBEFORM<mpk> = mpkform;
+    let PKIBEFORM<mpk> = mpkform;
     let ct = encibe(mpk, id, msg);
 }
 Source *->* Court: ct = ct
 Source -> Public: ct = ct
-Public -> Court: pkaform = pkaform
 Court {
-    let PFORM<pka> = pkaform;
+    let SKFORM<skc> = skcform;
+    let PKFORM<pka> = pkaform;
     new r: rand;
     let ctc = enc(pka, id, r);
     let signed_ctc = sign(skc, ctc);
@@ -56,9 +77,10 @@ Court {
     let b = blind(id, r);
 }
 Court *->* Decryptor: drequest = <b, pzk(id, r), signed_ctc, signed_audit, pzkenc(id, r)>
-Public -> Decryptor: pkcform = pkcform
 Decryptor {
-    let PFORM<pkc> = pkcform;
+    let SKIBEFORM<msk> = mskform;
+    let SKFORM<skd> = skdform;
+    let PKFORM<pkc> = pkcform;
     let <b: bitstring, pzk: bitstring, signed_ctc: bitstring, signed_audit: bitstring, pzkenc: bitstring> = drequest;
     let ctc = checksign(signed_ctc, pkc);
     let audit = checksign(signed_audit, pkc);
@@ -72,16 +94,14 @@ Court {
     let sk = bextract(r, partial);
     let m = decibe(ct, sk);
 }
-Auditor -> Public: something = <ctcsign, dsign>
-Public -> Auditor: pkcform = pkcform
-Public -> Auditor: pkdform = pkdform
+Auditor -> Public: auditableproof1 = <ctcsign, dsign>
 Auditor {
-    let PFORM<pkc> = pkcform;
-    let PFORM<pkd> = pkdform;
+    let SKFORM<ska> = skaform;
+    let PK2FORM<pkc, pkd> = pkcdform;
     let ctc = checksign(ctcsign, pkc);
     let id_ctc = dec(ska, ctc);
     let <audit: bitstring, ctcd: bitstring, zkenc: bitstring> = checksign(dsign, pkd);
     let <id_audit: bitstring, r: rand> = dec(ska, audit);
 }
-Auditor -> Public: somethingelse = <audit, ctcd, zkenc>
+Auditor -> Public: auditableproof2 = <audit, ctcd, zkenc>
 end
