@@ -124,8 +124,8 @@ let Auditor(c_AuditorKeyDistributor_authconf: channel, c_AuditorDecryptor_authco
 	let (id_audit: bitstring, r: rand) = dec(ska, audit) in
 	out(c, (audit, ctcd, zkenc));
 	if id_ctc=id_audit then
-         event OKaud(id)
-    else event KOaud(id).
+            event OKaud(id)
+        else event KOaud(id).
 
 let KeyDistributor(c_KeyDistributorSource_authconf: channel, c_DecryptorKeyDistributor_authconf: channel, c_CourtKeyDistributor_authconf: channel, c_AuditorKeyDistributor_authconf: channel) = 
 	new msk: mskeyi;
