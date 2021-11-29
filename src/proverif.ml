@@ -12,6 +12,14 @@ and show_function = function
 and build_function = function
     (f, (args_t, _, _, _)) -> (f, List.map (fun t -> show_dtype t) args_t)
 
+and show_pattern = function
+    PVar(x, None) -> x
+  | PVar(x, dt) -> x ^ ": " ^ show_dtype dt
+  | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
+  | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
+  | PTuple(args) -> "(" ^ show_pattern_list args ^ ")"
+  | PMatch(t) -> "=" ^ show_term t
+
 let rec show_term = function
     Var(x) -> x
   | Func(name, args) -> name ^ "(" ^ show_term_list args ^ ")"
@@ -22,6 +30,11 @@ let rec show_term = function
   | Or(t1, t2) -> show_term t1 ^ " || " ^ show_term t2
   | Not(t) -> "not(" ^ show_term t ^ ")"
   | If(cond, tterm, fterm) -> "( if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ " )"
+
+and show_term_list = function
+  [] -> ""
+| [x] -> show_term x
+| (x::xs) -> show_term x ^ ", " ^ show_term_list xs
 
 let rec build_equation_params t pos function_types names_and_types = (* [(var name, type)...] *)
   match (t, function_types) with
@@ -93,7 +106,7 @@ let proverif (pr:problem): unit =
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
   Printf.printf  "(* Protocol: %s *)\n\n" pr.name;
-  Printf.printf "channel c.%s\n\n" "";
+  Printf.printf "free c: channel.%s\n\n" "";
   List.iter (fun t -> 
     Printf.printf "type %s.\n" (show_dtype t)) pr.types;
   Printf.printf "%s\n" "";
