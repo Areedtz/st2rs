@@ -154,4 +154,4 @@ let rust_output (pr:problem) : unit =
   Printf.printf "\n%s\n" (rust_types concrete_types);
   Printf.printf "\n%s\n" (rust_formats pr.formats);
   Printf.printf "\n%s\n" (rust_functions pr.functions concrete_types);
-  List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process p (to_local_type pr.protocol p))) pr.principals;
+  List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process pr.knowledge p (to_local_type pr.protocol p))) pr.principals;
