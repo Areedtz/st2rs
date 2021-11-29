@@ -108,7 +108,7 @@ let Decryptor(c_DecryptorKeyDistributor_authconf: channel, c_CourtDecryptor_auth
 	out(c_CourtDecryptor_authconf, partial);
 	out(c_AuditorDecryptor_authconf, dsign);
 	if not(partial = p') then
-		event OKdec(ctc).
+	    event OKdec(ctc).
 
 let Auditor(c_AuditorKeyDistributor_authconf: channel, c_AuditorDecryptor_authconf: channel, c_AuditorCourt_authconf: channel) = 
 	in(c_AuditorKeyDistributor_authconf, skaform: bitstring);
