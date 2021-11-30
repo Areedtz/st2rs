@@ -27,7 +27,7 @@ Equations: dec(k, enc(pk(k), m, r)) = m,
            bextract(r, pextract(msk, blind(idi, r))) = extract(msk, idi),
            checkzkpok(blind(idi, r), pzk(idi, r)) = OK,
            checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK;
-Formats: SKIBEFORM(mskeyi), PKIBEFORM(mpkeyi), PKFORM(pkey), PK2FORM(pkey, pkey), SKFORM(skey);
+Formats: SKIBEFORM(mskeyi), PKIBEFORM(mpkeyi), PKFORM(pkey), SKFORM(skey);
 Protocol:
 KeyDistributor {
     new msk: mskeyi;
@@ -40,7 +40,7 @@ KeyDistributor {
     let pkd = pk(skd);
 }
 KeyDistributor *->* Auditor: skaform = SKFORM<ska>
-KeyDistributor *->* Auditor: pkcdform = PK2FORM<pkc, pkd>
+KeyDistributor *->* Auditor: pkcd = <pkc, pkd>
 
 KeyDistributor *->* Court: skcform = SKFORM<skc>
 KeyDistributor *->* Court: pkaform = PKFORM<pka>
@@ -97,7 +97,7 @@ Court {
 Auditor -> Public: auditableproof1 = <ctcsign, dsign>
 Auditor {
     let SKFORM<ska> = skaform;
-    let PK2FORM<pkc, pkd> = pkcdform;
+    let <pkc: pkey, pkd: pkey> = pkcd;
     let ctc = checksign(ctcsign, pkc);
     let id_ctc = dec(ska, ctc);
     let <audit: bitstring, ctcd: bitstring, zkenc: bitstring> = checksign(dsign, pkd);

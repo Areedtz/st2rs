@@ -1,4 +1,5 @@
 (* Protocol: AccountableWarrantExecution *)
+(* Test for correctness *)
 
 free c: channel.
 
@@ -9,21 +10,38 @@ type mskeyi.
 type skeyi.
 type rand.
 
+(* 
+	Free variables, id and msg, had to be
+	added manually, as this isn't possible
+	in the AB syntax and compiler yet.
+	They are needed to check if the
+	attacker gains knowledge of them.
+*)
 free id: bitstring [private].
 free msg: bitstring [private].
 
+(* 
+	Format functions are needed since 
+	compiler currently only expects 
+	bitstrings/tuples over channels.
+*)
 fun SKIBEFORM(mskeyi): bitstring [data].
 fun PKIBEFORM(mpkeyi): bitstring [data].
 fun PKFORM(pkey): bitstring [data].
-fun PK2FORM(pkey, pkey): bitstring [data].
 fun SKFORM(skey): bitstring [data].
 
 fun OK(): bitstring.
+
+(* Probalistic encryption *)
 fun pk(skey): pkey.
 fun enc(pkey, bitstring, rand): bitstring.
 fun dec(skey, bitstring): bitstring.
+
+(* Signatures *)
 fun sign(skey, bitstring): bitstring.
 fun checksign(bitstring, pkey): bitstring.
+
+(* IBE *)
 fun pkibe(mskeyi): mpkeyi.
 fun encibe(mpkeyi, bitstring, bitstring): bitstring.
 fun extract(mskeyi, bitstring): skeyi.
@@ -31,8 +49,12 @@ fun decibe(bitstring, skeyi): bitstring.
 fun blind(bitstring, rand): bitstring.
 fun pextract(mskeyi, bitstring): bitstring.
 fun bextract(rand, bitstring): skeyi.
+
+(* ZKP for Blinded ID *)
 fun pzk(bitstring, rand): bitstring.
 fun checkzkpok(bitstring, bitstring): bitstring.
+
+(* ZKP for encryption *)
 fun pzkenc(bitstring, rand): bitstring.
 fun checkzkpokenc(bitstring, bitstring): bitstring.
 
@@ -49,6 +71,10 @@ equation forall idi: bitstring, r: rand;
 equation forall idi: bitstring, r: rand, sk: skey;
 	checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK.
 
+(*
+	Events are added manually as 
+	compiler doesn't support them yet.
+*)
 event OKcourt().
 event OKaud(bitstring).
 event KOaud(bitstring).
@@ -102,31 +128,51 @@ let Decryptor(c_DecryptorKeyDistributor_authconf: channel, c_CourtDecryptor_auth
 	let (b: bitstring, pzk: bitstring, signed_ctc: bitstring, signed_audit: bitstring, pzkenc: bitstring) = drequest in
 	let ctc = checksign(signed_ctc, pkc) in
 	let audit = checksign(signed_audit, pkc) in
+	(*
+		Compiler currently only supports
+		if assignments, so to implement an
+		if statement in this way, we assign
+		a random bitstring, if the conditions fail.
+	*)
 	new p': bitstring;
 	let partial = ( if(checkzkpokenc(ctc, pzkenc) = OK && checkzkpok(b, pzk) = OK) then pextract(msk, b) else p' ) in
 	let dsign = sign(skd, (audit, ctc, pzkenc)) in
 	out(c_CourtDecryptor_authconf, partial);
 	out(c_AuditorDecryptor_authconf, dsign);
+	(* Event only fires if conditions didn't fail *)
 	if not(partial = p') then
 	    event OKdec(ctc).
 
 let Auditor(c_AuditorKeyDistributor_authconf: channel, c_AuditorDecryptor_authconf: channel, c_AuditorCourt_authconf: channel) = 
 	in(c_AuditorKeyDistributor_authconf, skaform: bitstring);
-	in(c_AuditorKeyDistributor_authconf, pkcdform: bitstring);
+	in(c_AuditorKeyDistributor_authconf, pkcd: bitstring);
 	in(c_AuditorCourt_authconf, ctcsign: bitstring);
 	in(c_AuditorDecryptor_authconf, dsign: bitstring);
 	out(c, (ctcsign, dsign));
 	let SKFORM(ska) = skaform in
-	let PK2FORM(pkc, pkd) = pkcdform in
+	let (pkc: pkey, pkd: pkey) = pkcd in
 	let ctc = checksign(ctcsign, pkc) in
 	let id_ctc = dec(ska, ctc) in
 	let (audit: bitstring, ctcd: bitstring, zkenc: bitstring) = checksign(dsign, pkd) in
 	let (id_audit: bitstring, r: rand) = dec(ska, audit) in
 	out(c, (audit, ctcd, zkenc));
 	if id_ctc=id_audit then
-            event OKaud(id)
-        else event KOaud(id).
+		event OKaud(id)
+	else event KOaud(id).
 
+(* 
+	We need a key distributor principal to 
+	distribute the keys among the principals,
+	since the compiler currently doesn't support
+	knowledge of public keys and receiving public
+	keys from a public channel will break correctness.
+
+	Example on the kind of syntax that knowledge would
+	need to support to give principals public keys in main process:
+	pka=pk(ska)@Court
+	which would mean that a variable pka, which is created with pk(ska)
+	should be given to the Court principal.
+*)
 let KeyDistributor(c_KeyDistributorSource_authconf: channel, c_DecryptorKeyDistributor_authconf: channel, c_CourtKeyDistributor_authconf: channel, c_AuditorKeyDistributor_authconf: channel) = 
 	new msk: mskeyi;
 	new ska: skey;
@@ -137,7 +183,7 @@ let KeyDistributor(c_KeyDistributorSource_authconf: channel, c_DecryptorKeyDistr
 	let pkc = pk(skc) in
 	let pkd = pk(skd) in
 	out(c_AuditorKeyDistributor_authconf, SKFORM(ska));
-	out(c_AuditorKeyDistributor_authconf, PK2FORM(pkc, pkd));
+	out(c_AuditorKeyDistributor_authconf, (pkc, pkd));
 	out(c_CourtKeyDistributor_authconf, SKFORM(skc));
 	out(c_CourtKeyDistributor_authconf, PKFORM(pka));
 	out(c_DecryptorKeyDistributor_authconf, SKIBEFORM(msk));
@@ -150,6 +196,13 @@ let KeyDistributor(c_KeyDistributorSource_authconf: channel, c_DecryptorKeyDistr
 	out(c, PKFORM(pkd));
 	0.
 
+(*
+	The public process is there to allow
+	principals to publish something on a public
+	channel, without having to send it to
+	another principal as well.
+	Again a limitation of the AB syntax and compiler.
+*)
 let Public() = 
 	in(c, mpkform: bitstring);
 	in(c, pkaform: bitstring);
