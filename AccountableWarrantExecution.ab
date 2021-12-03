@@ -84,8 +84,8 @@ Decryptor {
     let <b: bitstring, pzk: bitstring, signed_ctc: bitstring, signed_audit: bitstring, pzkenc: bitstring> = drequest;
     let ctc = checksign(signed_ctc, pkc);
     let audit = checksign(signed_audit, pkc);
-    new p': bitstring;
-    let partial = if(checkzkpokenc(ctc, pzkenc) = OK & checkzkpok(b, pzk) = OK, pextract(msk, b), p');
+    new p: bitstring;
+    let partial = if(checkzkpokenc(ctc, pzkenc) = OK() & checkzkpok(b, pzk) = OK(), pextract(msk, b), p);
     let dsign = sign(skd, <audit, ctc, pzkenc>);
 }
 Decryptor *->* Court: partial = partial

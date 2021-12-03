@@ -66,7 +66,7 @@ and printSDeclExp = function
 (* Repr::from_repr *)
 and printBlock = function
       Empty -> "{}"
-    | BStmts(lst) -> ("{\n") ^ String.concat (";\n") (List.map (fun s -> printStatements s) lst) ^ "}"
+    | BStmts(lst) -> ("{\n") ^ String.concat (";\n") (List.map (fun s -> printStatements s) lst) ^ "\n}"
 
 and printType = function
     U8 -> "u8"

@@ -101,7 +101,7 @@ let rec show_party_channels p acc suffix channels =
   | (_::xs) -> show_party_channels p acc suffix xs
 
 let proverif (pr:problem): unit =
-  let env = List.map (fun (p, x) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
+  let env = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
   let function_types = List.map (fun f -> build_function f) pr.functions in
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in

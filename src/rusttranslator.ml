@@ -11,10 +11,15 @@ let next_var =
 let indent = "    "
 let abstract_traits = ":Serialize + DeserializeOwned"
 
-let rec translateTerm = function
-    Var(x) -> Id(ID(x))
+let rec translateTerm t =
+  match t with
+  | Var(x) -> Id(ID(x))
   | Func(name, args) -> Exp(Id(ID(name)), translateArgs args)
   | Form(name, args) -> EStruct((ID(name)), StructValues(List.map (fun x-> StructValue x) ((List.map (fun a -> translateTerm a) args))))
+  | Tuple(args) -> Id(ID("(" ^ printExp (translateArgs args) ^ ")"))
+  | Eq(l, r) -> Id(ID(printExp (translateTerm l) ^ " == " ^ printExp (translateTerm r)))
+  | And(l, r) -> Id(ID(printExp (translateTerm l) ^ " && " ^ printExp (translateTerm r)))
+  | If(cond, t1, t2) -> Id(ID("if " ^ printExp (translateTerm cond) ^ " {\n\t" ^ printExp (translateTerm t1) ^ "\n} else {\n\t" ^ printExp (translateTerm t2) ^ "\n}"))
 
 and combineConditions cons =
   let rec inner cons acc =
@@ -35,6 +40,9 @@ and translatePattern pat (conditions : (term * term) list) =
   | PMatch(t) ->
       let var = next_var() in
       (ID(var), (t, Var(var))::conditions)
+  | PTuple(args) -> 
+    let pargs = String.concat ", " (List.map (fun p -> printrId (fst (translatePattern p conditions))) args) in
+    (ID("(" ^ pargs ^ ")"), conditions)
 
 and translateArgs args =
   Exps( (List.map (fun a -> translateTerm a) args))
@@ -56,8 +64,8 @@ and equals_condition_patterns = function
   | (t1, t2)::tail -> OExp(OExp(translateTerm t1, Equals, translateTerm t2),And, equals_condition_patterns tail)
 
 and process = function
-    LSend(_, opt, Form(fname, args), local_type) ->
-    let send = toFunction "send" (Exps([Id(ID("c")); ((EStruct(ID(fname ), StructValues((List.map (fun a -> StructValue(translateTerm a)) args)))))])) in
+    LSend(_, opt, t, local_type) ->
+    let send = toFunction "send" (Exps([Id(ID("c")); translateTerm t])) in
     SDeclExp(DeclExp(fst(translatePattern (PVar ("c", None)) []), send))::process local_type
   | LNew (ident, data_type, local_type) -> (fresh ident data_type)::process local_type
   | LLet (PForm(fname, args), term, local_type) ->
@@ -78,8 +86,8 @@ and process = function
       [SIfStatement(If((equals_condition_patterns conditions), BStmts(process local_type)))]
     end
   | LRecv (_, opt, PVar(x, _), term, LLet (PForm(fname, args), Var(xx), local_type)) ->
-    SDeclExp(DeclExp((ID("(c," ^x ^ ")")), toFunction "recv" (Id(ID("c")))))::SDeclExp(PatrExp(toStructPattern fname args, Id(ID(xx))))::process local_type
-  | LRecv (_, opt, PVar(x, _), term, local_type) ->  SDeclExp(DeclExp((ID(x)), toFunction ("recv") (Id(ID("c")))))::process local_type
+    SDeclExp(DeclExp((ID("(c, " ^ x ^ ")")), toFunction "recv" (Id(ID("c")))))::SDeclExp(PatrExp(toStructPattern fname args, Id(ID(xx))))::process local_type
+  | LRecv (_, opt, PVar(x, _), term, local_type) ->  SDeclExp(DeclExp((ID("(c, " ^ x ^ ")")), toFunction ("recv") (Id(ID("c")))))::process local_type
   | LEvent (ident, term, local_type) -> process local_type
   | LLocalEnd -> [SExp(toFunction "close" (Id(ID("c"))))]
   | _ -> [End]
@@ -119,5 +127,12 @@ and rust_functions (f : (ident * (data_type list * data_type * bool * data_type 
   let freshTypeFunctions = List.map (fun (typ) -> (freshType typ, ([], typ, false, []))) t in
   printFunctions (functions (f @ freshTypeFunctions))
 
+let rec translateKnowledge principal knowledge acc =
+    match knowledge with
+    | [] -> acc
+    | (t, dt, p) :: k ->
+      if p = principal then 
+        translateKnowledge principal k ((TypedID(ID(t), Custom(show_dtype dt))) :: acc)
+      else translateKnowledge principal k acc
 
-let rust_process principal proc = (printStatements (SFunction(Function(ID(String.lowercase principal),TypedIDs([TypedID(ID("c"), Custom("Chan<(), " ^ principal^">"))]), Empty,(BStmts(process proc))))))
+let rust_process knowledge principal proc = (printStatements (SFunction(Function(ID(String.lowercase principal),TypedIDs((TypedID(ID("c"), Custom("Chan<(), " ^ principal^">"))) :: translateKnowledge principal knowledge []), Empty,(BStmts(process proc))))))
