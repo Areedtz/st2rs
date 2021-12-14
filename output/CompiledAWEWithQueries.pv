@@ -134,13 +134,13 @@ let Decryptor(c_DecryptorKeyDistributor_authconf: channel, c_CourtDecryptor_auth
 		if statement in this way, we assign
 		a random bitstring, if the conditions fail.
 	*)
-	new p': bitstring;
-	let partial = ( if(checkzkpokenc(ctc, pzkenc) = OK && checkzkpok(b, pzk) = OK) then pextract(msk, b) else p' ) in
+	new p: bitstring;
+	let partial = ( if(checkzkpokenc(ctc, pzkenc) = OK() && checkzkpok(b, pzk) = OK()) then pextract(msk, b) else p ) in
 	let dsign = sign(skd, (audit, ctc, pzkenc)) in
 	out(c_CourtDecryptor_authconf, partial);
 	out(c_AuditorDecryptor_authconf, dsign);
 	(* Event only fires if conditions didn't fail *)
-	if not(partial = p') then
+	if not(partial = p) then
 	    event OKdec(ctc).
 
 let Auditor(c_AuditorKeyDistributor_authconf: channel, c_AuditorDecryptor_authconf: channel, c_AuditorCourt_authconf: channel) = 
@@ -209,8 +209,8 @@ let Public() =
 	in(c, pkcform: bitstring);
 	in(c, pkdform: bitstring);
 	in(c, ct: bitstring);
-	in(c, something: bitstring);
-	in(c, somethingelse: bitstring);
+	in(c, auditableproof1: bitstring);
+	in(c, auditableproof2: bitstring);
 	0.
 
 process (

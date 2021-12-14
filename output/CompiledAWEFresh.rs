@@ -28,8 +28,8 @@ fn close<E>(c: Chan<E, Eps>) { c.close() }
 type Source = Recv<Repr<PKIBEFORM>, Send<Repr<T>, Send<Repr<T>, Eps>>>;
 type Court = Recv<Repr<SKFORM>, Recv<Repr<PKFORM>, Recv<Repr<T>, Send<Repr<T>, Send<Repr<(T, T, T, T, T)>, Recv<Repr<T>, Eps>>>>>>;
 type Decryptor = Recv<Repr<SKIBEFORM>, Recv<Repr<SKFORM>, Recv<Repr<PKFORM>, Recv<Repr<(T, T, T, T, T)>, Send<Repr<T>, Send<Repr<T>, Eps>>>>>>;
-type Auditor = Recv<Repr<SKFORM>, Recv<Repr<PK2FORM>, Recv<Repr<T>, Recv<Repr<T>, Send<Repr<(T, T)>, Send<Repr<(T, T, T)>, Eps>>>>>>;
-type KeyDistributor = Send<Repr<SKFORM>, Send<Repr<PK2FORM>, Send<Repr<SKFORM>, Send<Repr<PKFORM>, Send<Repr<SKIBEFORM>, Send<Repr<SKFORM>, Send<Repr<PKFORM>, Send<Repr<PKIBEFORM>, Send<Repr<PKIBEFORM>, Send<Repr<PKFORM>, Send<Repr<PKFORM>, Send<Repr<PKFORM>, Eps>>>>>>>>>>>>;
+type Auditor = Recv<Repr<SKFORM>, Recv<Repr<(T, T)>, Recv<Repr<T>, Recv<Repr<T>, Send<Repr<(T, T)>, Send<Repr<(T, T, T)>, Eps>>>>>>;
+type KeyDistributor = Send<Repr<SKFORM>, Send<Repr<(T, T)>, Send<Repr<SKFORM>, Send<Repr<PKFORM>, Send<Repr<SKIBEFORM>, Send<Repr<SKFORM>, Send<Repr<PKFORM>, Send<Repr<PKIBEFORM>, Send<Repr<PKIBEFORM>, Send<Repr<PKFORM>, Send<Repr<PKFORM>, Send<Repr<PKFORM>, Eps>>>>>>>>>>>>;
 type Public = Recv<Repr<PKIBEFORM>, Recv<Repr<PKFORM>, Recv<Repr<PKFORM>, Recv<Repr<PKFORM>, Recv<Repr<T>, Recv<Repr<(T, T)>, Recv<Repr<(T, T, T)>, Eps>>>>>>>;
 
 
@@ -40,7 +40,6 @@ type mpkeyi = /* unimplemented */;
 type mskeyi = /* unimplemented */;
 type skeyi = /* unimplemented */;
 type rand = /* unimplemented */;
-type bitstring = /* unimplemented */;
 
 #[derive(Serialize, Deserialize)]
 struct SKIBEFORM(mskeyi);
@@ -50,9 +49,6 @@ struct PKIBEFORM(mpkeyi);
 
 #[derive(Serialize, Deserialize)]
 struct PKFORM(pkey);
-
-#[derive(Serialize, Deserialize)]
-struct PK2FORM(pkey, pkey);
 
 #[derive(Serialize, Deserialize)]
 struct SKFORM(skey);
@@ -126,11 +122,8 @@ unimplemented!()
 fn fresh_rand() -> rand {
 unimplemented!()
 }
-fn fresh_bitstring() -> bitstring {
-unimplemented!()
-}
 
-fn source(c: Chan<(), Source>, id: T, msg: T) {
+fn source(c: Chan<(), Source>, id: bitstring, msg: bitstring) {
 let (c, mpkform) = recv(c);
 let PKIBEFORM(mpk) = mpkform;
 let ct = encibe(mpk,id,msg);
@@ -139,9 +132,9 @@ let c = send(c,ct);
 close(c)
 }
 
-fn court(c: Chan<(), Court>, id: T) {
-let (c,skcform) = recv(c);
-let (c,pkaform) = recv(c);
+fn court(c: Chan<(), Court>, id: bitstring) {
+let (c, skcform) = recv(c);
+let (c, pkaform) = recv(c);
 let (c, ct) = recv(c);
 let SKFORM(skc) = skcform;
 let PKFORM(pka) = pkaform;
@@ -154,16 +147,16 @@ let audit = enc(pka,(id,r),r2);
 let signed_audit = sign(skc,audit);
 let b = blind(id,r);
 let c = send(c,(b,pzk(id,r),signed_ctc,signed_audit,pzkenc(id,r)));
-let (c,partial) = recv(c);
+let (c, partial) = recv(c);
 let sk = bextract(r,partial);
 let m = decibe(ct,sk);
 close(c)
 }
 
 fn decryptor(c: Chan<(), Decryptor>) {
-let (c,mskform) = recv(c);
-let (c,skdform) = recv(c);
-let (c,pkcform) = recv(c);
+let (c, mskform) = recv(c);
+let (c, skdform) = recv(c);
+let (c, pkcform) = recv(c);
 let (c, drequest) = recv(c);
 let SKIBEFORM(msk) = mskform;
 let SKFORM(skd) = skdform;
@@ -184,13 +177,13 @@ close(c)
 }
 
 fn auditor(c: Chan<(), Auditor>) {
-let (c,skaform) = recv(c);
-let (c,pkcdform) = recv(c);
-let (c,ctcsign) = recv(c);
-let (c,dsign) = recv(c);
+let (c, skaform) = recv(c);
+let (c, pkcd) = recv(c);
+let (c, ctcsign) = recv(c);
+let (c, dsign) = recv(c);
 let c = send(c,(ctcsign,dsign));
 let SKFORM(ska) = skaform;
-let PK2FORM(pkc,pkd) = pkcdform;
+let (pkc, pkd) = pkcd;
 let ctc = checksign(ctcsign,pkc);
 let id_ctc = dec(ska,ctc);
 let (audit, ctcd, zkenc) = checksign(dsign,pkd);
@@ -209,7 +202,7 @@ let pka = pk(ska);
 let pkc = pk(skc);
 let pkd = pk(skd);
 let c = send(c,SKFORM(ska));
-let c = send(c,PK2FORM(pkc,pkd));
+let c = send(c,(pkc,pkd));
 let c = send(c,SKFORM(skc));
 let c = send(c,PKFORM(pka));
 let c = send(c,SKIBEFORM(msk));
@@ -224,16 +217,12 @@ close(c)
 }
 
 fn public(c: Chan<(), Public>) {
-let (c,mpkform) = recv(c);
-let (c,pkaform) = recv(c);
-let (c,pkcform) = recv(c);
-let (c,pkdform) = recv(c);
-let (c,ct) = recv(c);
-let (c,auditableproof1) = recv(c);
-let (c,auditableproof2) = recv(c);
+let (c, mpkform) = recv(c);
+let (c, pkaform) = recv(c);
+let (c, pkcform) = recv(c);
+let (c, pkdform) = recv(c);
+let (c, ct) = recv(c);
+let (c, auditableproof1) = recv(c);
+let (c, auditableproof2) = recv(c);
 close(c)
-}
-
-fn main() {
-
 }
