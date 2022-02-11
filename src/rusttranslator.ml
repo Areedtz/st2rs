@@ -130,7 +130,7 @@ and rust_functions (f : (ident * (data_type list * data_type * bool * data_type 
 let rec translateKnowledge principal knowledge acc =
     match knowledge with
     | [] -> acc
-    | (t, dt, p) :: k ->
+    | (t, dt, p, _) :: k ->
       if p = principal then 
         translateKnowledge principal k ((TypedID(ID(t), Custom(show_dtype dt))) :: acc)
       else translateKnowledge principal k acc
