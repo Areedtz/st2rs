@@ -1,0 +1,126 @@
+(* Protocol: AccountableWarrantExecution *)
+
+free c: channel.
+
+type pkey.
+type skey.
+type mpkeyi.
+type mskeyi.
+type skeyi.
+type rand.
+
+fun PKIBEFORM(mpkeyi): bitstring [data].
+fun PKFORM(pkey): bitstring [data].
+
+fun OK(): bitstring.
+fun pk(skey): pkey.
+fun enc(pkey, bitstring, rand): bitstring.
+fun dec(skey, bitstring): bitstring.
+fun sign(skey, bitstring): bitstring.
+fun checksign(bitstring, pkey): bitstring.
+fun pkibe(mskeyi): mpkeyi.
+fun encibe(mpkeyi, bitstring, bitstring): bitstring.
+fun extract(mskeyi, bitstring): skeyi.
+fun decibe(bitstring, skeyi): bitstring.
+fun blind(bitstring, rand): bitstring.
+fun pextract(mskeyi, bitstring): bitstring.
+fun bextract(rand, bitstring): skeyi.
+fun pzk(bitstring, rand): bitstring.
+fun checkzkpok(bitstring, bitstring): bitstring.
+fun pzkenc(bitstring, rand): bitstring.
+fun checkzkpokenc(bitstring, bitstring): bitstring.
+
+equation forall k: skey, m: bitstring, r: rand;
+	dec(k, enc(pk(k), m, r)) = m.
+equation forall m: bitstring, ssk: skey;
+	checksign(sign(ssk, m), pk(ssk)) = m.
+equation forall idi: bitstring, m: bitstring, msk: mskeyi;
+	decibe(encibe(pkibe(msk), idi, m), extract(msk, idi)) = m.
+equation forall idi: bitstring, msk: mskeyi, r: rand;
+	bextract(r, pextract(msk, blind(idi, r))) = extract(msk, idi).
+equation forall idi: bitstring, r: rand;
+	checkzkpok(blind(idi, r), pzk(idi, r)) = OK.
+equation forall idi: bitstring, r: rand, sk: skey;
+	checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK.
+
+let Source(c_CourtSource_authconf: channel, mpk: mpkeyi, id: bitstring, msg: bitstring) = 
+	out(c, PKIBEFORM(mpk));
+	let ct = encibe(mpk, id, msg) in
+	out(c_CourtSource_authconf, ct);
+	out(c, ct);
+	0.
+
+let Court(c_CourtSource_authconf: channel, c_CourtDecryptor_authconf: channel, c_AuditorCourt_authconf: channel, pka: pkey, skc: skey, id: bitstring) = 
+	out(c, PKFORM(pka));
+	in(c_CourtSource_authconf, ct: bitstring);
+	new r: rand;
+	let ctc = enc(pka, id, r) in
+	let signed_ctc = sign(skc, ctc) in
+	out(c_AuditorCourt_authconf, signed_ctc);
+	new r2: rand;
+	let audit = enc(pka, (id, r), r2) in
+	let signed_audit = sign(skc, audit) in
+	let b = blind(id, r) in
+	out(c_CourtDecryptor_authconf, (b, pzk(id, r), signed_ctc, signed_audit, pzkenc(id, r)));
+	in(c_CourtDecryptor_authconf, partial: bitstring);
+	let sk = bextract(r, partial) in
+	let m = decibe(ct, sk) in
+	0.
+
+let Decryptor(c_CourtDecryptor_authconf: channel, c_AuditorDecryptor_authconf: channel, pkc: pkey, skd: skey, msk: mskeyi) = 
+	out(c, PKFORM(pkc));
+	in(c_CourtDecryptor_authconf, drequest: bitstring);
+	let (b: bitstring, pzk: bitstring, signed_ctc: bitstring, signed_audit: bitstring, pzkenc: bitstring) = drequest in
+	let ctc = checksign(signed_ctc, pkc) in
+	let audit = checksign(signed_audit, pkc) in
+	new p: bitstring;
+	let partial = ( if(checkzkpokenc(ctc, pzkenc) = OK() && checkzkpok(b, pzk) = OK()) then pextract(msk, b) else p ) in
+	let dsign = sign(skd, (audit, ctc, pzkenc)) in
+	out(c_CourtDecryptor_authconf, partial);
+	out(c_AuditorDecryptor_authconf, dsign);
+	0.
+
+let Auditor(c_AuditorDecryptor_authconf: channel, c_AuditorCourt_authconf: channel, pkd: pkey, pkc: pkey, ska: skey) = 
+	out(c, PKFORM(pkd));
+	in(c_AuditorCourt_authconf, ctcsign: bitstring);
+	in(c_AuditorDecryptor_authconf, dsign: bitstring);
+	out(c, (ctcsign, dsign));
+	let ctc = checksign(ctcsign, pkc) in
+	let id_ctc = dec(ska, ctc) in
+	let (audit: bitstring, ctcd: bitstring, zkenc: bitstring) = checksign(dsign, pkd) in
+	let (id_audit: bitstring, r: rand) = dec(ska, audit) in
+	out(c, (audit, ctcd, zkenc));
+	0.
+
+let Public() = 
+	in(c, mpkform: bitstring);
+	in(c, pkaform: bitstring);
+	in(c, pkcform: bitstring);
+	in(c, pkdform: bitstring);
+	in(c, ct: bitstring);
+	in(c, auditableproof1: bitstring);
+	in(c, auditableproof2: bitstring);
+	0.
+
+process (
+	new c_AuditorCourt_authconf: channel;
+	new c_AuditorDecryptor_authconf: channel;
+	new c_CourtDecryptor_authconf: channel;
+	new c_CourtSource_authconf: channel;
+	new id: bitstring;
+	new msg: bitstring;
+	new msk: mskeyi;
+	new ska: skey;
+	new skc: skey;
+	new skd: skey;
+	let pkd = pk(skd) in
+	let pkc = pk(skc) in
+	let pka = pk(ska) in
+	let mpk = pkibe(msk) in
+
+	Source(c_CourtSource_authconf, mpk, id, msg) |
+	Court(c_CourtSource_authconf, c_CourtDecryptor_authconf, c_AuditorCourt_authconf, pka, skc, id) |
+	Decryptor(c_CourtDecryptor_authconf, c_AuditorDecryptor_authconf, pkc, skd, msk) |
+	Auditor(c_AuditorDecryptor_authconf, c_AuditorCourt_authconf, pkd, pkc, ska) |
+	Public()
+)
