@@ -73,14 +73,6 @@ and pattern_list = function
     | [x] -> show_pattern x
     | (x::xs) -> show_pattern x ^ ", " ^ show_pattern_list xs
 
-and channels = function
-    LSend(_, opt, t, local_type) -> "Send<Repr<" ^ term_as_type t ^ ">, " ^ channels local_type ^ ">"
-  | LRecv (_, opt, pattern, term, local_type) -> "Recv<Repr<" ^ term_as_type term ^">, "^ channels local_type ^ ">"
-  | LNew (ident, data_type, local_type) -> channels local_type
-  | LLet (ident, term, local_type) -> channels local_type
-  | LEvent (ident, term, local_type) -> channels local_type
-  | _ -> "Eps"
-
 and createArguments (t:data_type list) =
   let rec inner dt i =
     match dt with
@@ -98,20 +90,6 @@ and print ident term =
 
 and fresh t =
   "fresh_" ^ show_dtype t
-
-and process = function
-    LSend(_, opt, t, local_type) -> indent ^ "let c = c.send(" ^ show_term t ^ ");\n" ^ process local_type
-  | LNew (ident, data_type, local_type) -> indent ^ "let " ^ ident ^ " = " ^ "f." ^ fresh data_type ^ "();\n" ^ process local_type
-  | LLet (PMatch(ident), term, local_type) ->
-    indent ^ "if " ^ show_term ident ^ " != " ^ show_term term ^ " { panic!(\"" ^show_term ident ^ " does not match " ^ show_term term  ^"\") };\n" ^ process local_type
-  | LLet (ident, term, local_type) -> indent ^ "let " ^ show_pattern ident ^ " = " ^ show_term term ^ ";\n" ^ process local_type
-  | LRecv (_, opt, pattern, term, local_type) ->  indent ^ "let (c, " ^ show_pattern pattern ^") = c.recv();\n" ^ process local_type
-  | LLocalEnd -> indent ^ "c.close();"
-  | LEvent (ident, term, local_type) -> indent ^ print ident term^ process local_type
-  | _ -> "0."
-
-(* and rust_process principal proc = *)
-  (* "fn " ^ String.lowercase principal ^ "(c: Chan<(), " ^ principal ^ ">, "^functions_variable ^ ": &impl Interface" ^") {\n" ^ process proc ^"\n}" *)
 
 and print_type t =
   match t with
@@ -139,19 +117,46 @@ and print_format f =
   match f with
   | (name, data_types) -> "enum " ^  name ^ " { "^ enum ^"(" ^ String.concat ", " (List.map (fun data -> print_type data) data_types) ^ ") }"
 
+and channels acc = function
+  Send(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
+    channels acc g
+  | Send(sender, receiver, _, _, _, g) ->
+    channels ([(receiver, sender);(sender, receiver)]@acc) g
+  | Compute(_, _, g) -> channels acc g
+  | DefGlobal(_, _, g, g') -> channels (channels acc g) g'
+  | _ -> acc
 
-and rust_channel p t =
-  "type " ^ p ^ " = " ^ channels t ^ ";"
+and output_channel s r = function
+  Send(sender, receiver, _, _, t, g) when sender = s && receiver = r ->
+    "Send<Repr<" ^ term_as_type t ^ ">, " ^ output_channel s r g ^ ">"
+  | Send(sender, receiver, _, _, t, g) when sender = r && receiver = s ->
+    "Recv<Repr<" ^ term_as_type t ^">, " ^ output_channel s r g ^ ">"
+  | Send(_, _, _, _, _, g) -> output_channel s r g
+  | Compute(_, _, g) -> output_channel s r g
+  | _ -> "Eps"
 
+and principal_channels principal channels = 
+  List.filter (fun (s, _) -> principal = s) channels
+
+and to_local_type global_type participant =
+  match global_type with
+    Send(sender, receiver, opt, x, t, g) when participant = sender -> LSend(sender ^ receiver, opt, t, to_local_type g participant)
+  | Send(sender, receiver, opt, x, t, g) when participant = receiver -> LRecv(receiver ^ sender, opt, PVar(x, None), t, to_local_type g participant)
+  | Send(_, _, _, _, _, g) -> to_local_type g participant
+  | Compute(p, letb, g) when participant = p -> local_let_bind letb (to_local_type g participant)
+  | Compute(p, letb, g) -> (to_local_type g participant)
+  | DefGlobal(name, params, g, g') -> to_local_type (unwrapGlobal g' g) participant
+  | _ -> LLocalEnd
 
 let rust_output (pr:problem) : unit =
   Printf.printf "%s\n" (rust_handwritten);
-  List.map (fun (p, b) ->
-      Printf.printf "%s\n" (rust_channel p (to_local_type pr.protocol p))) pr.principals;
+  let channel_pairs = channels [] pr.protocol in
+  List.iter (fun (s, r) -> 
+      Printf.printf "type %s%s = %s\n" s r (output_channel s r pr.protocol)) channel_pairs;
   let abstract_types = List.filter_map (function DAType(s1,s2) -> Some(DAType(s1,s2)) | _ -> None) pr.types in
   let concrete_types = List.filter_map (function DType(s1) -> Some(DType(s1)) | _ -> None) pr.types in
   Printf.printf "\n%s\n" (rust_a_types abstract_types);
   Printf.printf "\n%s\n" (rust_types concrete_types);
   Printf.printf "\n%s\n" (rust_formats pr.formats);
   Printf.printf "\n%s\n" (rust_functions pr.functions concrete_types);
-  List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process pr.knowledge p (to_local_type pr.protocol p))) pr.principals;
+  List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process (principal_channels p channel_pairs) pr.knowledge p (to_local_type pr.protocol p))) pr.principals;

@@ -51,7 +51,7 @@ and toStructPattern fname args =
   StructPattern(ID(fname), List.map (fun a -> fst(translatePattern (a) [])) args)
 
 and toFunction name exp =
-  Exp(Id(ID(name)),exp)
+  Exp(Id(ID(name)), exp)
 
 and freshType t =
     "fresh_" ^ show_dtype t
@@ -62,34 +62,36 @@ and fresh name data_type  =
 and equals_condition_patterns = function
     (t1, t2)::[] -> OExp(translateTerm t1, Equals, translateTerm t2)
   | (t1, t2)::tail -> OExp(OExp(translateTerm t1, Equals, translateTerm t2),And, equals_condition_patterns tail)
+  
+and close_channels channels = List.map (fun (s, r) -> SExp(toFunction "close" (Id(ID("c_" ^ s ^ r))))) channels
 
-and process = function
-    LSend(_, opt, t, local_type) ->
-    let send = toFunction "send" (Exps([Id(ID("c")); translateTerm t])) in
-    SDeclExp(DeclExp(fst(translatePattern (PVar ("c", None)) []), send))::process local_type
-  | LNew (ident, data_type, local_type) -> (fresh ident data_type)::process local_type
+and process channels = function
+    LSend(ident, opt, t, local_type) ->
+    let send = toFunction "send" (Exps([Id(ID("c_" ^ ident)); translateTerm t])) in
+    SDeclExp(DeclExp(fst(translatePattern (PVar ("c_" ^ ident, None)) []), send))::process channels local_type
+  | LNew (ident, data_type, local_type) -> (fresh ident data_type)::process channels local_type
   | LLet (PForm(fname, args), term, local_type) ->
     let patterns = List.map (fun a -> translatePattern (a) []) args in
     let conditions = List.flatten(List.map (fun x -> snd(x)) patterns) in
     let pats = List.map (fun x-> fst(x)) patterns in
     let strPtn = StructPattern(ID(fname), pats) in
-    if(conditions = []) then SDeclExp(PatrExp(strPtn, translateTerm term))::process local_type
-    else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process local_type)))]
+    if(conditions = []) then SDeclExp(PatrExp(strPtn, translateTerm term))::process channels local_type
+    else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process channels local_type)))]
   | LLet (PMatch(mat), term, local_type) ->
-    [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process local_type)))]
+    [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process channels local_type)))]
   | LLet (ident, term, local_type) ->
     let patterns = translatePattern ident [] in
     let conditions = snd(patterns) in
     if(conditions = []) then begin
-      SDeclExp(DeclExp(fst(patterns), translateTerm term))::process local_type end
+      SDeclExp(DeclExp(fst(patterns), translateTerm term))::process channels local_type end
     else begin
-      [SIfStatement(If((equals_condition_patterns conditions), BStmts(process local_type)))]
+      [SIfStatement(If((equals_condition_patterns conditions), BStmts(process channels local_type)))]
     end
-  | LRecv (_, opt, PVar(x, _), term, LLet (PForm(fname, args), Var(xx), local_type)) ->
-    SDeclExp(DeclExp((ID("(c, " ^ x ^ ")")), toFunction "recv" (Id(ID("c")))))::SDeclExp(PatrExp(toStructPattern fname args, Id(ID(xx))))::process local_type
-  | LRecv (_, opt, PVar(x, _), term, local_type) ->  SDeclExp(DeclExp((ID("(c, " ^ x ^ ")")), toFunction ("recv") (Id(ID("c")))))::process local_type
-  | LEvent (ident, term, local_type) -> process local_type
-  | LLocalEnd -> [SExp(toFunction "close" (Id(ID("c"))))]
+  | LRecv (ident, opt, PVar(x, _), term, LLet (PForm(fname, args), Var(xx), local_type)) ->
+    SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction "recv" (Id(ID("c_" ^ ident)))))::SDeclExp(PatrExp(toStructPattern fname args, Id(ID(xx))))::process channels local_type
+  | LRecv (ident, opt, PVar(x, _), term, local_type) ->  SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction ("recv") (Id(ID("c_" ^ ident)))))::process channels local_type
+  | LEvent (ident, term, local_type) -> process channels local_type
+  | LLocalEnd -> close_channels channels
   | _ -> [End]
 
 and typedIds t =
@@ -128,11 +130,19 @@ and rust_functions (f : (ident * (data_type list * data_type * bool * data_type 
   printFunctions (functions (f @ freshTypeFunctions))
 
 let rec translateKnowledge principal knowledge acc =
-    match knowledge with
-    | [] -> acc
-    | (t, dt, p) :: k ->
-      if p = principal then 
-        translateKnowledge principal k ((TypedID(ID(t), Custom(show_dtype dt))) :: acc)
-      else translateKnowledge principal k acc
+  match knowledge with
+  | [] -> acc
+  | (t, dt, p) :: k ->
+    if p = principal then 
+      translateKnowledge principal k ((TypedID(ID(t), Custom(show_dtype dt))) :: acc)
+    else translateKnowledge principal k acc
+    
+let rec translateChannels principal channels acc =
+  match channels with
+  | [] -> acc
+  | (s, r) :: c ->
+    if s = principal then
+      translateChannels principal c (TypedID(ID("c_" ^ s ^ r), Custom("Chan<(), " ^ s ^ r ^ ">")) :: acc)
+    else translateChannels principal c acc
 
-let rust_process knowledge principal proc = (printStatements (SFunction(Function(ID(String.lowercase principal),TypedIDs((TypedID(ID("c"), Custom("Chan<(), " ^ principal^">"))) :: translateKnowledge principal knowledge []), Empty,(BStmts(process proc))))))
+let rust_process channels knowledge principal proc = (printStatements (SFunction(Function(ID(String.lowercase principal),TypedIDs(translateChannels principal channels [] @ translateKnowledge principal knowledge []), Empty,(BStmts(process channels proc))))))
