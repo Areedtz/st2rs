@@ -21,6 +21,7 @@ type term =
   | Or of term * term
   | Not of term
   | If of term * term * term
+  | Null
 
 (* Pattern *)
 type pattern =
@@ -89,7 +90,7 @@ type prindis =
 
 type problem = { name: ident;
                  principals: (principal * bool) list;
-                 knowledge: (ident * data_type * principal) list;
+                 knowledge: (ident * data_type * principal * term) list;
                  types: data_type list;
                  functions: (ident * (data_type list * data_type * bool * data_type list)) list;
                  equations: (term * term) list;
@@ -233,8 +234,8 @@ let rec update x y = function
 
 let rec initial_knowledge p e = function
   | [] -> e
-  | (t', dt', p') :: t ->
-    if p' = p then initial_knowledge p ((t', dt')::e) t
+  | (t', dt', p', f') :: t ->
+    if p' = p then initial_knowledge p ((t', dt', f')::e) t
     else initial_knowledge p e t
 
 let rec print_sep = function

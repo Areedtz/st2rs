@@ -39,7 +39,8 @@ eqdef:
 | lhs = term; EQ; rhs = term { (lhs, rhs) }
 
 indef:
-| t = ID; COLON; dt = data_type; AT; prin = ID { (t, dt, prin) }
+| t = ID; COLON; dt = data_type; AT; prin = ID { (t, dt, prin, Null) }
+| t = ID; COLON; dt = data_type; AT; prin = ID; EQ; f = term { (t, dt, prin, f) }
 
 prindef:
 | name = ID; LEFT_BRACK; DISHONEST; RIGHT_BRACK
