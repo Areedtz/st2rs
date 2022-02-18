@@ -19,7 +19,7 @@ let rec translateTerm t =
   | Tuple(args) -> Id(ID("(" ^ printExp (translateArgs args) ^ ")"))
   | Eq(l, r) -> Id(ID(printExp (translateTerm l) ^ " == " ^ printExp (translateTerm r)))
   | And(l, r) -> Id(ID(printExp (translateTerm l) ^ " && " ^ printExp (translateTerm r)))
-  | If(cond, t1, t2) -> Id(ID("if " ^ printExp (translateTerm cond) ^ " {\n\t" ^ printExp (translateTerm t1) ^ "\n} else {\n\t" ^ printExp (translateTerm t2) ^ "\n}"))
+  | If(cond, t1, t2) -> Id(ID("if " ^ printExp (translateTerm cond) ^ " {\n\t\t" ^ printExp (translateTerm t1) ^ "\n\t} else {\n\t\t" ^ printExp (translateTerm t2) ^ "\n\t}"))
 
 and combineConditions cons =
   let rec inner cons acc =
