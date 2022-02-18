@@ -73,14 +73,23 @@ and show_format = function
 and show_env = function
   env ->
     let vars = List.flatten (List.map (fun (_, e) -> e) env) in
-    let uniq_vars = List.sort_uniq (fun (a,_) (c,_) -> compare a c) vars in
-    String.concat "\n" (List.map (fun (name, dtype) -> "\tnew " ^ name ^ ": " ^ show_dtype dtype ^ ";") uniq_vars)
+    let uniq_vars = List.sort_uniq (fun (a,_,_) (c,_,_) -> compare a c) vars in
+    let sorted = List.sort (fun (_,_,f) (_,_,f') -> 
+      match f with 
+      | Null -> -1
+      | _ -> 1
+      ) uniq_vars in
+    (String.concat "\n" (List.map (fun (name, dtype, func) -> 
+      match func with
+      | Null -> "\tnew " ^ name ^ ": " ^ show_dtype dtype ^ ";"
+      | _ -> "\tlet " ^ name ^ " = " ^ show_term func ^ " in"
+      ) sorted) ^ "\n")
 
 and show_party_params = function
-  params -> List.map (fun (name, dtype) -> name ^ ": " ^ show_dtype dtype) params
+  params -> List.map (fun (name, dtype, _) -> name ^ ": " ^ show_dtype dtype) params
 
 and instantiate_party_process_vars party = function
-  env -> List.map (fun (i, _) -> i) (List.assoc party env)
+  env -> List.map (fun (i, _, _) -> i) (List.assoc party env)
 
 let rec build_channels acc = function
     Send(sender, receiver, opt, _, _, g) when opt != Public ->
@@ -120,4 +129,4 @@ let proverif (pr:problem): unit =
     Printf.printf "%s.\n" (show_equation e function_types)) pr.equations;
   Printf.printf "%s\n" "";
   List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p env)))) (show_local_type (to_local_type pr.protocol p))) pr.principals;
-  Printf.printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_env env) (String.concat " | " (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p env))) ^ ")") pr.principals))
+  Printf.printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_env env) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p env))) ^ ")") pr.principals))
