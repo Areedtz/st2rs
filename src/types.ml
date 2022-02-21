@@ -2,7 +2,6 @@ open Printf
 
 type principal = string
 type ident = string
-type tenv = (principal * ident list) list
 type lemma = string
 (* 1. Types *)
 type data_type =
@@ -22,6 +21,8 @@ type term =
   | Not of term
   | If of term * term * term
   | Null
+
+type tenv = (principal * (ident * data_type * term) list) list
 
 (* Pattern *)
 type pattern =
