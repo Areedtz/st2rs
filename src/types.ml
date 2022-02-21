@@ -1,5 +1,7 @@
 open Printf
 
+exception TypeError of string
+
 type principal = string
 type ident = string
 type lemma = string
@@ -8,6 +10,7 @@ type data_type =
     DType of ident
   | DAType of ident * ident
   | AType of ident
+  | DTType of data_type list (* used for tuples in type checking *)
   | None
 (* Terms *)
 type term =
@@ -22,7 +25,7 @@ type term =
   | If of term * term * term
   | Null
 
-type tenv = (principal * (ident * data_type * term) list) list
+type tenv = (principal * (ident * data_type) list) list
 
 (* Pattern *)
 type pattern =
@@ -48,10 +51,43 @@ type let_bind =
   | Event of ident * term list * let_bind
   | LetEnd
 
-let rec binds = function
-    PVar(x, _) -> [x]
-  | PMatch t -> []
-  | PFunc(_, args) | PForm(_, args) | PTuple args -> List.concat (List.map binds args)
+(* Checks if term: exists, check_func, return list of errors *)
+let rec get_term_type env funs = function
+| Var(x) -> 
+  begin
+    match List.assoc_opt x env with
+    | Some(dt) -> dt
+    | None -> raise (TypeError ("Variable doesn't exist in env")) (* TODO: Come up with better solution than raising an error *)
+  end
+| Func(f, args) ->
+  begin
+    match List.assoc_opt f funs with
+    | Some(_, dt, _, _) -> dt
+    | None -> raise (TypeError ("Function doesn't exist in funs")) (* TODO: Come up with better solution than raising an error *)
+  end
+| Form(f, args) -> None (* TODO Format typechecking *)
+| Tuple(l) ->
+    DTType(List.map (fun t -> get_term_type env funs t) l) (* recursively gets terms with their env and funcs *)
+| Eq(t1, t2) | And(t1, t2) | Or(t1, t2) ->
+    DType "bool" (* TODO: Consider checking types of t1 and t2 *)
+| Not(t) ->
+    DType "bool" (* TODO: Consider if we need to check env *)
+| If(cond, t1, t2) -> 
+    let first = get_term_type env funs t1 in
+    let second = get_term_type env funs t2 in
+    if first = second then first
+    else raise (TypeError ("t1 and t2 are not of the same type in if-assignment")) (* TODO: Come up with better solution than raising an error *)
+| Null -> None
+
+let rec binds env funs t = function
+    PVar(x, dt) -> 
+      begin
+        match dt with
+        | None -> [x, get_term_type env funs t]
+        | _ -> [x, dt]
+      end
+  | PMatch(_) -> []
+  | PFunc(_, args) | PForm(_, args) | PTuple args -> List.concat (List.map (binds env funs t) args)
 
 (* Channel options / Bullet notation *)
 type channel_option =
