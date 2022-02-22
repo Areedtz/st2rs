@@ -1,8 +1,6 @@
 open Types
 
-type resultOrError =
-    Result of tenv
-  | Error of string list
+exception SyntaxError of string
 
 let rec add_params_to_env env = function
     [] -> Result env
@@ -11,57 +9,21 @@ let rec add_params_to_env env = function
       match List.assoc_opt princ env with
       | Some princ_env -> add_params_to_env (update princ (param::princ_env) env) params
       | None -> Error(["Principal " ^ princ ^ " not defined"])
-    end
+    end)
 
-(* Checks if function: exist, right number of args, if data func, return list of errors *)
-let check_func f args is_pattern funs =
+(* Checks if func: exists, right number of args, passed variables match parameters types *)
+let get_func_type f args funs =
   match List.assoc_opt f funs with
-    | None -> [f ^ " not defined"]
-    | Some((targs, tres, data_fun, _)) ->
-      let n_args = List.length targs in
-      if List.length args <> n_args then
-      ["Wrong number of parameters in " ^ f] (* Types.show_term (Func(f,args)) instead of f *)
-      else [] @
-      if is_pattern && not data_fun then [f ^ " is not a data function"] else []
-
-(* Checks if term: exists, check_func, return list of errors *)
-let rec check_term (env: (ident * data_type) list) (funs: (ident * (data_type list * data_type * bool * data_type list)) list) : term -> string list = function
-  | Var(x) -> 
-    begin
-      match List.assoc_opt x env with 
-      | Some(_) -> []
-      | None -> [x ^ " not defined"]
-    end
-  | Func(f, args) ->
-    check_func f args false funs @
-    List.concat (List.map (check_term env funs) args)
-  | Form(f, args) -> [] (* TODO Format typechecking *)
-  | Tuple(l) ->
-      List.concat(List.map (check_term env funs) l) (* recursively checks terms with their env and funcs, concat = flattens map *)
-  | Eq(t1, t2) | And(t1, t2) | Or(t1, t2) ->
-      check_term env funs t1 @ check_term env funs t2
-  | Not(t) ->
-      check_term env funs t
-  | If(cond, t1, t2) -> 
-      check_term env funs cond @ check_term env funs t1 @ check_term env funs t2 (* TODO: Should check if t1 and t2 are of the same type *)
-  | Null -> []
-
-(* Checks if pattern: is not pre-defined, check_term, check_func, return list of errors *)
-let rec check_pattern env funs = function
-  | PVar(x, _) -> 
-    begin
-      match List.assoc_opt x env with
-      | Some(_) -> [x ^ " already defined in pattern"]
-      | None -> [] (* check for free variables *)
-    end
-  | PMatch(t) ->
-      check_term env funs t
-  | PForm(f, args) -> [] (* TODO Format typechecking *) 
-  | PFunc(f, args) ->
-    check_func f args true funs @
-      List.concat (List.map (check_pattern env funs) args)
-  | PTuple(l) ->
-      List.concat(List.map (check_pattern env funs) l)
+    | Some(param_types, dt, _, _) -> 
+      if List.length args <> List.length param_types then raise (TypeError (Printf.sprintf "Wrong number of parameters for function %s" f)) 
+      List.iteri (fun (i, arg) -> 
+        let term_type = get_term_type env funs arg in
+        let param_type = List.nth param_types i in
+        if term_type <> param_type then 
+          raise (TypeError (Printf.sprintf "Variable type %s doesn't match %s in signature of %s" term_type param_type f)) 
+      ) args
+      dt
+    | None -> raise (TypeError ("Function doesn't exist in funs"))
 
 (* Checks if term: exists, check_func, return list of errors *)
 let rec get_term_type env funs = function
@@ -69,19 +31,16 @@ let rec get_term_type env funs = function
     begin
       match List.assoc_opt x env with
       | Some(dt) -> dt
-      | None -> raise (TypeError ("Variable doesn't exist in env")) (* TODO: Come up with better solution than raising an error *)
+      | None -> raise (TypeError ("Variable doesn't exist in env"))
     end
-  | Func(f, args) ->
-    begin
-      match List.assoc_opt f funs with
-      | Some(_, dt, _, _) -> dt
-      | None -> raise (TypeError ("Function doesn't exist in funs")) (* TODO: Come up with better solution than raising an error *)
-    end
+  | Func(f, args) -> get_func_type f args funs
   | Form(f, args) -> DType(f)
   | Tuple(l) ->
       DTType(List.map (fun t -> get_term_type env funs t) l) (* recursively gets terms with their env and funcs *)
-  | Eq(t1, t2) | And(t1, t2) | Or(t1, t2) ->
+  | Eq(t1, t2) ->
       DType "bool" (* TODO: Consider checking types of t1 and t2 *)
+  | And(t1, t2) | Or(t1, t2) ->
+      DType "bool"
   | Not(t) ->
       DType "bool" (* TODO: Consider if we need to check env *)
   | If(cond, t1, t2) -> 
@@ -90,6 +49,26 @@ let rec get_term_type env funs = function
       if first = second then first
       else raise (TypeError ("t1 and t2 are not of the same type in if-assignment")) (* TODO: Come up with better solution than raising an error *)
   | Null -> None
+
+(* Checks if pattern: is not pre-defined, check_term, check_func, return list of errors *)
+let rec get_pattern_type env funs = function
+  | PVar(x, pdt) ->
+    begin
+      match pdt with
+      | None -> 
+        begin
+          match List.assoc_opt x env with
+          | Some(dt) -> dt
+          | None -> raise (TypeError ("Type missing"))
+        end
+      | _ -> pdt
+    end
+  | PMatch(t) ->
+      get_term_type env funs t
+  | PForm(f, args) -> DType f (* TODO Format typechecking *) 
+  | PFunc(f, args) -> get_func_type f args funs
+  | PTuple(l) -> DTType(List.map (fun p -> get_pattern_type env funs p) l)
+
 
 let rec typecheck (pr:problem): unit = 
   let p' = ("Dishonest", false)::pr.principals in
@@ -105,7 +84,6 @@ and check
   (funs : (ident * (data_type list * data_type * bool * data_type list)) list)          (* function name, argument types, return data type, is data function, generic types *)
   : (string * global_type) list                 (* error messages and where in code *)
    =
-
 (* checks send: if p and q exist, if t is well-formed, updates env of q with x *)
 match g with
 | Send(p, q, _, n, t, g') ->
