@@ -6,11 +6,11 @@ type resultOrError =
 
 let rec add_params_to_env env = function
     [] -> Result env
-  | (x, p)::params ->
+  | (param, princ)::params ->
     begin
-      match List.assoc_opt p env with
-      | Some p_env -> add_params_to_env (update p (x::p_env) env) params
-      | None -> Error(["Principal " ^ p ^ " not defined"])
+      match List.assoc_opt princ env with
+      | Some princ_env -> add_params_to_env (update princ (param::princ_env) env) params
+      | None -> Error(["Principal " ^ princ ^ " not defined"])
     end
 
 (* Checks if function: exist, right number of args, if data func, return list of errors *)
@@ -77,7 +77,7 @@ let rec get_term_type env funs = function
       | Some(_, dt, _, _) -> dt
       | None -> raise (TypeError ("Function doesn't exist in funs")) (* TODO: Come up with better solution than raising an error *)
     end
-  | Form(f, args) -> None (* TODO Format typechecking *)
+  | Form(f, args) -> DType(f)
   | Tuple(l) ->
       DTType(List.map (fun t -> get_term_type env funs t) l) (* recursively gets terms with their env and funcs *)
   | Eq(t1, t2) | And(t1, t2) | Or(t1, t2) ->
@@ -101,7 +101,7 @@ let rec typecheck (pr:problem): unit =
 and check
   (g : global_type)                             (* Global type *)
   (env : tenv)                                  (* each princ. with their known var, as a list *)
-  (def : (ident * ((ident * principal) list * global_type)) list)   (* function name, it's env and the global type *)
+  (def : (ident * (((ident * data_type) * principal) list * global_type)) list)  (* function name, it's env and the global type *)
   (funs : (ident * (data_type list * data_type * bool * data_type list)) list)          (* function name, argument types, return data type, is data function, generic types *)
   : (string * global_type) list                 (* error messages and where in code *)
    =
@@ -181,5 +181,13 @@ end
           List.map (fun e -> (e, g)) (List.concat (List.map (fun (t, (x, p)) -> check_term (List.assoc p env) funs t) (List.combine args params)))
   end
 
-| GlobalEnd -> []
+| GlobalEnd -> 
+  begin
+    List.iter (fun (p, l) -> 
+    Printf.printf "%s:\n" p; 
+    List.iter (fun (id, dt) -> 
+      Printf.printf "\t(%s: %s)\n" id (show_dtype dt)) l; 
+    Printf.printf "%s\n" "") env;
+    []
+  end
 (*| _ -> [] *)
