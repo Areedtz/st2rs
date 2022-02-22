@@ -139,7 +139,7 @@ global_type:
   { GlobalEnd };
 
 param:
-| x = ID; AT; p = ID { (x, p) }
+| x = ID; COLON; dt = data_type; AT; p = ID { ((x, dt), p) }
 
 branch_list:
 | { [] }

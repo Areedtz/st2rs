@@ -101,7 +101,7 @@ type global_type =
     Send of principal * principal * channel_option * ident * term * global_type
   | Branch of principal * principal * channel_option * term * (pattern * global_type) list
   | Compute of principal * let_bind * global_type
-  | DefGlobal of ident * (ident * principal) list * global_type * global_type
+  | DefGlobal of ident * ((ident * data_type) * principal) list * global_type * global_type
   | CallGlobal of ident * term list
   | GlobalEnd
 
@@ -171,10 +171,17 @@ and show_pattern_list = function
   | [x] -> show_pattern x
   | (x::xs) -> show_pattern x ^ ", " ^ show_pattern_list xs
 
+and show_dtype_list = function
+    [] -> ""
+  | [x] -> show_dtype x
+  | (x::xs) -> show_dtype x ^ ", " ^ show_dtype_list xs
+
 and show_dtype t =
   match t with
   | DType dtype -> dtype
   | DAType(at, dt) -> at ^ "<" ^ dt ^">"
+  | DTType l -> "(" ^ show_dtype_list l ^ ")"
+  | _ -> ""
 
 and show_let_bind = function
     New(name, data_type, letb) -> "  " ^ "new " ^ name ^ ";\n" ^ show_let_bind letb
@@ -225,8 +232,8 @@ and show_branches_nr = function
 
 and show_params = function
   [] -> ""
-| [(x, p)] -> x ^ " @ " ^ p
-| ((x, p)::xs) -> x ^ " @ " ^ p ^ ", " ^ show_params xs
+| [((x, dt), p)] -> x ^ ": " ^ show_dtype dt ^ " @ " ^ p
+| (((x, dt), p)::xs) -> x ^ ": " ^ show_dtype dt ^ " @ " ^ p ^ ", " ^ show_params xs
 
 (* show rules *)
 let show_fact (Fact(f, args)) = f ^"("^show_term_list args^")"
