@@ -82,6 +82,7 @@ term_list:
 data_type:
 | name = ID { DType(name) }
 | wrapper = ID; LEFT_ANGLE; name = ID; RIGHT_ANGLE { DAType(wrapper, name) }
+| LEFT_ANGLE; l = data_type_list; RIGHT_ANGLE { DTType(l) }
 
 data_type_list:
   | l = separated_list(COMMA, data_type)

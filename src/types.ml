@@ -11,6 +11,7 @@ type data_type =
   | DAType of ident * ident
   | AType of ident
   | DTType of data_type list (* used for tuples in type checking *)
+  | DFType of ident (* used for formats *)
   | None
 (* Terms *)
 type term =
@@ -152,6 +153,7 @@ let rec show_term = function
   | Or(t1, t2) -> show_term t1 ^ " | " ^ show_term t2
   | Not(t) -> "~" ^ show_term t
   | If(cond, tterm, fterm) -> "if(" ^ show_term cond ^ ", " ^ show_term tterm ^ ", " ^ show_term fterm ^ ")"
+  | Null -> ""
 
 (* List options: empty, single item, list *)
 and show_term_list = function
@@ -181,6 +183,7 @@ and show_dtype t =
   | DType dtype -> dtype
   | DAType(at, dt) -> at ^ "<" ^ dt ^">"
   | DTType l -> "(" ^ show_dtype_list l ^ ")"
+  | DFType dtype -> dtype
   | _ -> ""
 
 and show_let_bind = function
