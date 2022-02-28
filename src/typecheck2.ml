@@ -8,16 +8,16 @@ let rec add_params_to_env env = function
     begin
       match List.assoc_opt princ env with
       | Some princ_env -> add_params_to_env (update princ (param::princ_env) env) params
-      | None -> raise (TypeError ("Principal " ^ princ ^ " not defined"))
+      | None -> raise (SyntaxError ("Principal " ^ princ ^ " not defined"))
     end
 
-(* Checks if term: exists, check_func, return list of errors *)
+(* Checks if term: exists, check_func *)
 let rec get_term_type env funs = function
   | Var(x) -> 
     begin
       match List.assoc_opt x env with
       | Some(dt) -> dt
-      | None -> raise (TypeError ("Variable doesn't exist in env"))
+      | None -> raise (SyntaxError ("Variable " ^ x ^ " doesn't exist in env"))
     end
   | Func(f, args) -> 
     begin
@@ -25,7 +25,7 @@ let rec get_term_type env funs = function
       | Some(param_types, dt, _, _) -> 
         if List.length args <> List.length param_types
           then 
-            raise (TypeError (Printf.sprintf "Wrong number of parameters for function %s" f)) 
+            raise (SyntaxError (Printf.sprintf "Wrong number of parameters for function %s" f)) 
           else
             List.iteri (fun i arg ->
               let arg_type = get_term_type env funs arg in
@@ -36,7 +36,7 @@ let rec get_term_type env funs = function
                 else ()
             ) args;
             dt
-      | None -> raise (TypeError ("Function doesn't exist in funs"))
+      | None -> raise (SyntaxError ("Function " ^ f ^ " doesn't exist in funs"))
     end
   | Form(f, args) -> DFType(f)
   | Tuple(l) ->
@@ -51,7 +51,7 @@ let rec get_term_type env funs = function
       let first = get_term_type env funs t1 in
       let second = get_term_type env funs t2 in
       if first = second then first
-      else raise (TypeError ("t1 and t2 are not of the same type in if-assignment")) (* TODO: Come up with better solution than raising an error *)
+      else raise (TypeError ("t1 and t2 are not of the same type in if-assignment"))
   | Null -> None
 
 (* Checks if pattern: is not pre-defined, check_term, check_func, return list of errors *)
@@ -63,7 +63,7 @@ let rec get_pattern_type env funs = function
         begin
           match List.assoc_opt x env with
           | Some(dt) -> dt
-          | None -> raise (TypeError ("Type missing"))
+          | None -> raise (TypeError ("Type missing for variable " ^ x))
         end
       | _ -> pdt
     end
@@ -161,7 +161,7 @@ end
 | DefGlobal(f, params, g', g'') ->
   let def' = ((f, (params, g'))::def) in
   let env' = add_params_to_env env params in
-  raise (TypeError ("DefGlobal are currently not supported in TypeCheck2"))
+  raise (TypeError ("DefGlobal is currently not supported in TypeCheck2"))
   (* (check g' env_param def' funs) @ (* obs recursion on def' *)
                        (check g'' env def' funs) *) (* TODO: Look into this later *)
 
