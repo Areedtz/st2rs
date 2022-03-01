@@ -129,6 +129,53 @@ let get_penv env p =
    match List.assoc_opt p env with
   | Some(penv) -> penv
   | None -> raise (TypeError("Could not find env for party"))
+
+let rec compile_letb return_local env princ letb g =
+  match letb with
+  | New(name, data, letb) ->
+  | Let(pattern, term, letb) ->
+  | LetEnd -> compile 
+
+let rec compile env princ gt =
+  match gt with
+  | Send(s, r, opt, x, t, g) when princ = s ->
+    let env' = env in
+    (* Check if s can send t *)
+    (* Check if x is in r's env *)
+      (* check that type of x matches type of t *)
+    (* else *)
+      (* add x = type of x to r's env *)
+    LSend((if r < s then r ^ s else s ^ r), opt, t, compile env' princ g)
+  | Send(s, r, opt, x, t, g) when princ = r ->
+    let env' = env in
+    (* Check if s can send t *)
+    (* Check if x is in r's env *)
+      (* check that type of x matches type of t *)
+    (* else *)
+      (* add x = type of x to r's env *)
+    LRecv((if r < s then r ^ s else s ^ r), opt, PVar(x, None), t, compile env' princ g)
+  | Send(s, r, _, x, t, g) ->
+    let env' = env in
+    (* Check if s can send t *)
+    (* Check if x is in r's env *)
+      (* check that type of x matches type of t *)
+    (* else *)
+      (* add x = type of x to r's env *)
+    compile env' princ g
+  | Compute(p, letb, g) ->
+    (* add new stuff to env for p *)
+    (* check types and syntax in local as well *) 
+    compile_letb (princ = p) env princ letb g
+  | Branch(s, r, opt, lb, rb, g) when princ = s ->
+    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
+    LOffer(compile env' princ lb, compile env' princ rb, compile env princ g)
+  | Branch(s, r, opt, lb, rb, g) when princ = r ->
+    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
+    LChoose(compile env' princ lb, compile env' princ rb, compile env princ g)
+  | Branch(_, _, _, _, _, g) ->
+    compile env princ g
+  | _ -> LLocalEnd
+
 let proverif (pr:problem): unit =
   let env = typecheck2 pr in
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
