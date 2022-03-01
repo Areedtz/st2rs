@@ -33,13 +33,11 @@ type pattern =
     PVar of ident * data_type
   | PForm of ident * pattern list
   | PMatch of term
-  | PFunc of ident * pattern list
   | PTuple of pattern list
 
 let rec pattern_to_term = function
     PVar(x, _) -> Var x
   | PMatch t -> t
-  | PFunc(f, args) -> Func(f, List.map pattern_to_term args)
   | PTuple args -> Tuple(List.map pattern_to_term args)
 
 let id_to_var = List.map (fun x -> Var x)
@@ -88,7 +86,7 @@ let rec binds env funs t = function
         | _ -> [x, dt]
       end
   | PMatch(_) -> []
-  | PFunc(_, args) | PForm(_, args) | PTuple args -> List.concat (List.map (binds env funs t) args)
+  | PForm(_, args) | PTuple args -> List.concat (List.map (binds env funs t) args)
 
 (* Channel options / Bullet notation *)
 type channel_option =
@@ -163,7 +161,6 @@ and show_term_list = function
 
 and show_pattern = function
     PVar(x, _) -> x
-  | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
   | PMatch(t) -> "=" ^ show_term t

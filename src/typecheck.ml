@@ -57,9 +57,6 @@ let rec check_pattern env funs = function
   | PMatch(t) ->
       check_term env funs t
   | PForm(f, args) -> [] (* TODO Format typechecking *) 
-  | PFunc(f, args) ->
-    check_func f args true funs @
-      List.concat (List.map (check_pattern env funs) args)
   | PTuple(l) ->
       List.concat(List.map (check_pattern env funs) l)
 

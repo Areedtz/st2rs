@@ -52,7 +52,6 @@ and term_as_type_list = function
 
 and pattern = function
     PVar(x, _) -> abstract_type
-  | PFunc(name, args) -> name ^ "(" ^ pattern_list args ^ ")"
   | PTuple(args) -> "pair(" ^ pattern_list args ^ ")"
   | PMatch(t) -> "=" ^ term_as_type t
 
@@ -63,7 +62,6 @@ and pattern_list = function
 
   and show_pattern = function
       PVar(x, _) -> x
-    | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
     | PForm(fname, args) -> show_format fname ^ "(" ^ show_pattern_list args ^ ")"
     | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
     | PMatch(t) -> "=" ^ show_term t

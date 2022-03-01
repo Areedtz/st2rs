@@ -19,7 +19,6 @@ and show_term_list = function
 and show_pattern = function
     PVar(x, None) -> x
   | PVar(x, dt) -> x ^ ": " ^ show_dtype dt
-  | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
   | PMatch(t) -> "=" ^ show_term t

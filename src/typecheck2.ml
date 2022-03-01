@@ -70,25 +70,6 @@ let rec get_pattern_type env funs = function
   | PMatch(t) ->
       get_term_type env funs t
   | PForm(f, args) -> DFType f (* TODO Format typechecking *) 
-  | PFunc(f, args) -> 
-    begin
-      match List.assoc_opt f funs with
-      | Some(param_types, dt, _, _) -> 
-        if List.length args <> List.length param_types
-          then 
-            raise (TypeError (Printf.sprintf "Wrong number of parameters for function %s" f)) 
-          else
-            List.iteri (fun i arg ->
-              let arg_type = get_pattern_type env funs arg in
-              let param_type = List.nth param_types i in
-              if arg_type <> param_type 
-                then 
-                  raise (TypeError (Printf.sprintf "Variable type %s doesn't match %s in signature of %s" (show_dtype arg_type) (show_dtype param_type) f))
-                else ()
-            ) args;
-            dt
-      | None -> raise (TypeError ("Function doesn't exist in funs"))
-      end
   | PTuple(l) -> DTType(List.map (fun p -> get_pattern_type env funs p) l)
 
 
