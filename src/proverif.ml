@@ -2,6 +2,8 @@ open Types
 open Localtypes
 open Typecheck2
 
+exception SyntaxError of string
+
 let rec show_params = function
   [] -> ""
   | [t] -> "" ^ (show_dtype t)
@@ -66,20 +68,20 @@ and show_channel parties = function
   | Conf -> "c_" ^ parties ^ "_conf"
   | AuthConf -> "c_" ^ parties ^ "_authconf"
 
-and show_local_type env = function
-    LSend(ident, opt, t, local_type) -> "\tout(" ^ show_channel ident opt ^ ", " ^ show_term t  ^");\n"^ show_local_type env local_type
-  | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type env local_type
-  | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type env local_type
+and show_local_type = function
+    LSend(ident, opt, t, local_type) -> "\tout(" ^ show_channel ident opt ^ ", " ^ show_term t  ^");\n"^ show_local_type local_type
+  | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type local_type
+  | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type local_type
   | LRecv (ident, opt, pattern, term, local_type) -> 
     begin
       match pattern with
-      | PVar(x, _) -> 
-        match List.assoc_opt x env with
-        | Some(dt) -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ": " ^ show_dtype dt ^ ");\n" ^ show_local_type env local_type
-        | None -> raise (TypeError ("Could not find variable in env"))
+      | PVar(x, dt) -> 
+        match dt with
+        | None -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type local_type
+        | _ -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ": " ^ show_dtype dt ^ ");\n" ^ show_local_type local_type
       | _ -> raise (TypeError ("Error ocurred"))
     end
-  | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type env local_type
+  | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type local_type
   | LLocalEnd -> "\t0."
 
 and show_format = function
@@ -129,55 +131,178 @@ let get_penv env p =
   | Some(penv) -> penv
   | None -> raise (TypeError("Could not find env for party"))
 
-let rec compile_letb return_local env princ letb g =
-  match letb with
-  | New(name, data, letb) ->
-  | Let(pattern, term, letb) ->
-  | LetEnd -> compile 
+let safe_update p x dt env =
+  match List.assoc_opt p env with
+  | None -> raise (SyntaxError (Printf.sprintf "Principal %s was not found in environment" p))
+  | Some(env_p) -> 
+    match List.assoc_opt x env_p with
+    | None -> update p ((x, dt)::env_p) env
+    | Some(old_dt) -> 
+      if old_dt <> dt
+        then raise (TypeError (Printf.sprintf "Variable %s was previously assigned as %s. Cannot be reassigned as %s" x (show_dtype old_dt) (show_dtype dt)))
+      else env
 
-let rec compile env princ gt =
+let rec get_term_type env forms funs = function
+  | Var(x) -> 
+    begin
+      match List.assoc_opt x env with
+      | Some(dt) -> dt
+      | None -> raise (SyntaxError ("Variable " ^ x ^ " doesn't exist in env"))
+    end
+  | Func(f, args) -> 
+    begin
+      match List.assoc_opt f funs with
+      | Some(param_types, dt, _, _) -> 
+        if List.length args <> List.length param_types
+          then 
+            raise (SyntaxError (Printf.sprintf "Wrong number of parameters for function %s" f)) 
+          else
+            List.iteri (fun i arg ->
+              let arg_type = get_term_type env forms funs arg in
+              let param_type = List.nth param_types i in
+              if arg_type <> param_type 
+                then 
+                  raise (TypeError (Printf.sprintf "Variable type %s doesn't match %s in signature of %s" (show_dtype arg_type) (show_dtype param_type) f))
+                else ()
+            ) args;
+            dt
+      | None -> raise (SyntaxError ("Function " ^ f ^ " doesn't exist in funs"))
+    end
+  | Form(f, args) -> 
+    begin
+      match List.assoc_opt f forms with
+      | Some(param_types) -> 
+        if List.length args <> List.length param_types
+          then 
+            raise (SyntaxError (Printf.sprintf "Wrong number of parameters for format %s" f)) 
+          else
+            List.iteri (fun i arg ->
+              let arg_type = get_term_type env forms funs arg in
+              let param_type = List.nth param_types i in
+              if arg_type <> param_type 
+                then 
+                  raise (TypeError (Printf.sprintf "Variable type %s doesn't match %s in signature of %s" (show_dtype arg_type) (show_dtype param_type) f))
+                else ()
+            ) args;
+            DTType(List.map (fun t -> get_term_type env forms funs t) args)
+      | None -> raise (SyntaxError ("Form " ^ f ^ " doesn't exist in forms"))
+    end
+  | Tuple(args) -> DTType(List.map (fun t -> get_term_type env forms funs t) args)
+  | Eq(t1, t2) ->
+      DType "bool" (* TODO: Consider checking types of t1 and t2 *)
+  | And(t1, t2) | Or(t1, t2) ->
+      DType "bool"
+  | Not(t) ->
+      DType "bool" (* TODO: Consider if we need to check env *)
+  | If(cond, t1, t2) -> 
+      let first = get_term_type env forms funs t1 in
+      let second = get_term_type env forms funs t2 in
+      if first = second then first
+      else raise (TypeError ("t1 and t2 are not of the same type in if-assignment"))
+  | Null -> None
+      
+let rec get_pattern_types env forms funs = function
+  | PVar(x, pdt) ->
+    begin
+      let existing_type = 
+        match List.assoc_opt x env with
+        | Some(dt) -> dt
+        | None -> None in
+      match pdt with
+      | None -> [(x, existing_type)]
+      | _ -> 
+        if existing_type <> None && pdt <> existing_type
+          then raise (TypeError(Printf.sprintf "Variable %s was matched to type %s, but was previously assigned as %s" x (show_dtype pdt) (show_dtype existing_type)))
+          else [(x, pdt)]
+    end
+  | PMatch(t) ->
+    begin
+      match t with
+      | Var(x) -> [(x, get_term_type env forms funs t)]
+      | _ -> raise (SyntaxError(Printf.sprintf "Pattern match only supports variables, not %s" (show_term t)))
+    end
+  | PForm(f, args) ->
+    begin
+      match List.assoc_opt f forms with
+      | None -> raise (SyntaxError(Printf.sprintf "Format %s was not found in format definitions" f))
+      | Some(dtypes) -> 
+        let argtypes = List.flatten (List.map (fun arg -> get_pattern_types env forms funs arg) args) in
+        let combinetypes = List.combine argtypes dtypes in
+        List.map (fun ((x, dt), fdt) ->
+          if dt <> None && dt <> fdt
+            then raise (TypeError(Printf.sprintf "Variable %s is used as %s, but was previously assigned as %s" x (show_dtype fdt) (show_dtype dt)))
+            else (x, fdt)
+        ) combinetypes
+    end
+  | PTuple(args) -> List.flatten (List.map (fun arg -> get_pattern_types env forms funs arg) args)
+
+let dt_unpack dt =
+  match dt with
+  | DTType(types) -> types
+  | _ -> [dt]
+
+let rec compile env forms funs princ gt =
   match gt with
   | Send(s, r, opt, x, t, g) when princ = s ->
-    let env' = env in
-    (* Check if s can send t *)
-    (* Check if x is in r's env *)
-      (* check that type of x matches type of t *)
-    (* else *)
-      (* add x = type of x to r's env *)
-    LSend((if r < s then r ^ s else s ^ r), opt, t, compile env' princ g)
+    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
+    let env' = safe_update r x ttype env in
+    LSend((if r < s then r ^ s else s ^ r), opt, t, compile env' forms funs princ g)
   | Send(s, r, opt, x, t, g) when princ = r ->
-    let env' = env in
-    (* Check if s can send t *)
-    (* Check if x is in r's env *)
-      (* check that type of x matches type of t *)
-    (* else *)
-      (* add x = type of x to r's env *)
-    LRecv((if r < s then r ^ s else s ^ r), opt, PVar(x, None), t, compile env' princ g)
+    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
+    let env' = safe_update r x ttype env in
+    
+    LRecv((if r < s then r ^ s else s ^ r), opt, PVar(x, None), t, compile env' forms funs princ g)
   | Send(s, r, _, x, t, g) ->
-    let env' = env in
-    (* Check if s can send t *)
-    (* Check if x is in r's env *)
-      (* check that type of x matches type of t *)
-    (* else *)
-      (* add x = type of x to r's env *)
-    compile env' princ g
+    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
+    let env' = safe_update r x ttype env in
+    compile env' forms funs princ g
   | Compute(p, letb, g) ->
-    (* add new stuff to env for p *)
-    (* check types and syntax in local as well *) 
-    compile_letb (princ = p) env princ letb g
-  | Branch(s, r, opt, lb, rb, g) when princ = s ->
+    let rec compile_letb inner_env letb =
+      match letb with
+      | New(name, dt, next) ->
+        let inner_env' = safe_update p name dt inner_env in
+        if p = princ 
+          then LNew(name, dt, compile_letb inner_env' next)
+          else compile_letb inner_env' next
+      | Let(pattern, term, next) ->
+        let ptypes = get_pattern_types (get_penv inner_env p) forms funs pattern in
+        let ttype = get_term_type (get_penv inner_env p) forms funs term in
+        let inner_env' = if List.length ptypes == 1 then
+          if (snd (List.nth ptypes 0)) <> None && (snd (List.nth ptypes 0)) <> ttype then
+            raise (TypeError(Printf.sprintf "Mismatching types in left and right hand parts of assignment"))
+          else 
+            safe_update p (fst (List.nth ptypes 0)) ttype inner_env
+        else
+          let unpacked = dt_unpack ttype in
+          if List.length ptypes == List.length unpacked then
+            List.fold_left2 (fun acc ptype unpacktype -> 
+              if (snd ptype) <> None && (snd ptype) <> unpacktype then
+                raise (TypeError(Printf.sprintf "Mismatching types in left and right hand parts of assignment"))
+              else 
+                safe_update p (fst ptype) unpacktype acc
+            ) inner_env ptypes unpacked
+          else
+            raise (SyntaxError(Printf.sprintf "Could not match left hand side of assignment to right hand side of assignment, mismatching number of variables")) in
+        if p = princ then 
+          LLet(pattern, term, compile_letb inner_env' next)
+        else 
+          compile_letb inner_env' next
+      | LetEnd -> compile inner_env forms funs princ g in
+    compile_letb env letb
+  (*| Branch(s, r, opt, lb, rb, g) when princ = s ->
     let env' = List.filter (fun (p, _) -> p = s || p = r) env in
     LOffer(compile env' princ lb, compile env' princ rb, compile env princ g)
   | Branch(s, r, opt, lb, rb, g) when princ = r ->
     let env' = List.filter (fun (p, _) -> p = s || p = r) env in
     LChoose(compile env' princ lb, compile env' princ rb, compile env princ g)
   | Branch(_, _, _, _, _, g) ->
-    compile env princ g
+    compile env princ g*)
   | _ -> LLocalEnd
 
 let proverif (pr:problem): unit =
-  let env = typecheck2 pr in
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
+  let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
+  List.iter (fun (p,_) -> Printf.printf "%s" (show_local_type (compile env pr.formats pr.functions p pr.protocol))) pr.principals;
   let function_types = List.map (fun f -> build_function f) pr.functions in
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
@@ -195,5 +320,5 @@ let proverif (pr:problem): unit =
   List.iter (fun e -> 
     Printf.printf "%s.\n" (show_equation e function_types)) pr.equations;
   Printf.printf "%s\n" "";
-  List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type (get_penv env p) (to_local_type pr.protocol p))) pr.principals;
+  List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type (to_local_type pr.protocol p))) pr.principals;
   Printf.printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))
