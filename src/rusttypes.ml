@@ -4,9 +4,8 @@ open Rusttranslator
 
 let abstract_type = "T"
 let concrete_type = "/* unimplemented */"
-let functions_variable = "f"
 let pair = "pair"
-let pair_function = functions_variable ^ "." ^ pair
+let pair_function = pair
 let indent = "    "
 let interface_impl_name = "Functions"
 let enum = "I"
@@ -15,11 +14,11 @@ let enum_func =  "::"^enum
 let rec show_term_pair = function
     [] -> ""
   | [x] -> "" ^ show_term x (* In all cases we want to lend the value *)
-  | (x::xs) ->  pair_function ^ "("  ^  "&" ^show_term x ^ ", &" ^ show_term_pair xs ^ ")"
+  | (x::xs) ->  pair_function ^ "("  ^  "&" ^ show_term x ^ ", &" ^ show_term_pair xs ^ ")"
 
 and show_term = function
     Var(x) -> x
-  | Func(name, args) -> functions_variable ^ "." ^ name ^ "(" ^ show_term_list args ^ ")"
+  | Func(name, args) -> name ^ "(" ^ show_term_list_without_lending args ^ ")"
   | Form(name, args) -> show_format name ^ "(" ^ show_term_list_without_lending args ^ ")"
   | Tuple(args) -> show_term_pair args
   | Eq(t1, t2) -> show_term t1 ^ " = " ^ show_term t2
@@ -32,7 +31,7 @@ and show_format name = name ^enum_func
 and show_term_list_without_lending = function
     [] -> ""
   | [x] -> "" ^ show_term x (* In all cases we want to lend the value *)
-  | (x::xs) ->  "" ^ show_term x ^ ", " ^ show_term_list xs
+  | (x::xs) ->  "" ^ show_term x ^ ", " ^ show_term_list_without_lending xs
 
 and show_term_list = function
     [] -> ""
@@ -148,15 +147,27 @@ and to_local_type global_type participant =
   | DefGlobal(name, params, g, g') -> to_local_type (unwrapGlobal g' g) participant
   | _ -> LLocalEnd
 
+and rust_equations equations =
+  let start = "#[cfg(test)]\nmod tests {\n\tuse super::*;\n" in
+  let rec inner equations counter =
+    match equations with
+    | [] -> ""
+    | ((lhs, rhs)::l) -> Printf.sprintf "\t#[test]\n\tfn test_equation_%d() {\n\t\tassert_eq!(%s, %s);\n\t}\n%s" counter (show_term lhs) (show_term rhs) (inner l (counter + 1)) in
+  if List.length equations < 1 
+    then ""
+    else start ^ (inner equations 1) ^ "}"
+
+
 let rust_output (pr:problem) : unit =
   Printf.printf "%s\n" (rust_handwritten);
   let channel_pairs = channels [] pr.protocol in
   List.iter (fun (s, r) -> 
-      Printf.printf "type %s%s = %s\n" s r (output_channel s r pr.protocol)) channel_pairs;
+      Printf.printf "type %s%s = %s;\n" s r (output_channel s r pr.protocol)) channel_pairs;
   let abstract_types = List.filter_map (function DAType(s1,s2) -> Some(DAType(s1,s2)) | _ -> None) pr.types in
   let concrete_types = List.filter_map (function DType(s1) -> Some(DType(s1)) | _ -> None) pr.types in
   Printf.printf "\n%s\n" (rust_a_types abstract_types);
   Printf.printf "\n%s\n" (rust_types concrete_types);
   Printf.printf "\n%s\n" (rust_formats pr.formats);
   Printf.printf "\n%s\n" (rust_functions pr.functions concrete_types);
+  Printf.printf "\n%s\n" (rust_equations pr.equations);
   List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process (principal_channels p channel_pairs) pr.knowledge p (to_local_type pr.protocol p))) pr.principals;
