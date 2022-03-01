@@ -46,8 +46,6 @@ and local_let_bind types g =
 (* Show global types *)
 and show_global_type2 = function
     Send(p, q, _, x, t, g) -> "SEND: " ^ "from (" ^ p ^ ") to (" ^ q ^ "): name: " ^ x ^ " = " ^ show_term t ^ "\n" ^ show_global_type2 g
-  | Branch(p, q, _, t, branches) ->
-    "MATCH"^ p ^ "->" ^ q ^ ": match " ^ show_term t ^ " with {\n" ^ show_branches branches ^ "}\n"
   | Compute(p, letb, g) ->
     p ^ " {\n" ^ show_let_bind letb ^ "}\n" ^ show_global_type2 g
   | DefGlobal(name, params, g, g') -> show_global_type2 g
@@ -85,8 +83,6 @@ and show_local_type local =
 
 and show_global_type_nr = function
     Send(p, q, opt, x, t, g) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ " ..."
-  | Branch(p, q, opt, t, branches) ->
-    p ^ show_channel_option opt ^ q ^ ": match " ^ show_term t ^ " with {\n" ^ show_branches_nr branches ^ "}\n"
   | Compute(p, letb, g) ->
     p ^ " {\n" ^ show_let_bind letb ^ "}...\n"
   | DefGlobal(name, params, g, g') ->

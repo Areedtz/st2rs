@@ -2,12 +2,11 @@
   open Types
 %}
 %token <string> ID
-%token <int> NUM
 %token <string> STRING
 %token COMMA COLON SEMI PCT ARROW AT AUTH CONF AUTHCONF
 %token LEFT_PAR RIGHT_PAR LEFT_ANGLE RIGHT_ANGLE LEFT_BRACE RIGHT_BRACE LEFT_BRACK RIGHT_BRACK
-%token EQ AND OR NOT DIV PLUS
-%token NEW LET EVENT IN END MATCH WITH DATA IF
+%token EQ AND OR NOT
+%token NEW LET EVENT IN END IF LEFT RIGHT BRANCH_END
 %token PROBLEM PRINCIPALS KNOWLEDGE TYPES FUNCTIONS EQUATIONS FORMATS PROTOCOL DISHONEST LEMMA
 %token EOF
 
@@ -123,28 +122,23 @@ channel_option:
 | AUTHCONF { AuthConf };
 
 global_type:
-| prin1 = ID; chan = channel_option; prin2 = ID; COLON; p = pattern; gt = global_type
-  { Branch(prin1, prin2, chan, pattern_to_term p, [p, gt]) }
 | prin1 = ID; chan = channel_option; prin2 = ID; COLON; x = ID; EQ; t = term; gt = global_type
   { Send(prin1, prin2, chan, x, t, gt ) }
-| prin1 = ID; chan = channel_option; prin2 = ID; COLON; MATCH; t1 = term; WITH; LEFT_BRACE; branches = branch_list; RIGHT_BRACE
-  { Branch(prin1, prin2, chan, t1, branches) }
+| prin1 = ID; chan = channel_option; prin2 = ID; COLON; LEFT_BRACE; LEFT; COLON; lb = global_type; RIGHT; COLON; rb = global_type; RIGHT_BRACE; gt = global_type
+  { Branch(prin1, prin2, chan, lb, rb, gt) }
 | prin = ID; LEFT_BRACE; lb = let_bind; RIGHT_BRACE; gt = global_type
   { Compute(prin, lb, gt) }
 | LET; name = ID; LEFT_PAR; params = separated_list(COMMA, param); RIGHT_PAR; EQ; gt1 = global_type; IN; gt2 = global_type
   { DefGlobal(name, params, gt1, gt2) }
 | name = ID; LEFT_PAR; args = term_list; RIGHT_PAR
   { CallGlobal(name, args) }
+| BRANCH_END
+  { GlobalEnd }
 | END
   { GlobalEnd };
 
 param:
 | x = ID; AT; p = ID { (x, p) }
-
-branch_list:
-| { [] }
-| p = pattern; COLON; gt = global_type; branches = branch_list
-  { ((p, gt)::branches) };
 
 opt_lemm:
 | LEMMA; COLON; s = STRING

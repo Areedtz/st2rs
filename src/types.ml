@@ -62,7 +62,7 @@ type channel_option =
 (* Global types: p -> q *)
 type global_type =
     Send of principal * principal * channel_option * ident * term * global_type
-  | Branch of principal * principal * channel_option * term * (pattern * global_type) list
+  | Branch of principal * principal * channel_option * global_type * global_type * global_type
   | Compute of principal * let_bind * global_type
   | DefGlobal of ident * (ident * principal) list * global_type * global_type
   | CallGlobal of ident * term list
@@ -72,13 +72,11 @@ type global_type =
 type local_type =
     LSend of ident * channel_option * term * local_type
   | LRecv of ident * channel_option * pattern * term * local_type
-  | LSelect of principal * (term * local_type) list
-  | LBranch of principal * (pattern * local_type) list
+  | LOffer of local_type * local_type * local_type
+  | LChoose of local_type * local_type * local_type
   | LNew of ident * data_type * local_type
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
-  | LDefLocal of ident * ident list * local_type * local_type
-  | LCallLocal of ident * term list * local_type
   | LLocalEnd
 
 
@@ -154,8 +152,6 @@ and show_channel_option = function
 (* Show global types *)
 and show_global_type = function
   Send(p, q, opt, x, t, g) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ "\n" ^ show_global_type g
-| Branch(p, q, opt, t, branches) ->
-  p ^ show_channel_option opt ^ q ^ ": match " ^ show_term t ^ " with {\n" ^ show_branches branches ^ "}\n"
 | Compute(p, letb, g) ->
   p ^ " {\n" ^ show_let_bind letb ^ "}\n" ^ show_global_type g
 | DefGlobal(name, params, g, g') ->
@@ -166,8 +162,6 @@ and show_global_type = function
 
 and show_global_type_nr = function
   Send(p, q, opt, x, t, g) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ " ..."
-| Branch(p, q, opt, t, branches) ->
-  p ^ show_channel_option opt ^ q ^ ": match " ^ show_term t ^ " with {\n" ^ show_branches_nr branches ^ "}\n"
 | Compute(p, letb, g) ->
   p ^ " {\n" ^ show_let_bind letb ^ "}...\n"
 | DefGlobal(name, params, g, g') ->
@@ -247,12 +241,6 @@ let mscgen (pr:problem): unit =
   let last l = List.nth l (List.length l - 1) in
   let rec mscglobal = function
   | Send(p, q, _, x, t, g) -> p ^ "->" ^ q ^ " [label=\"" ^ x ^ " = " ^ show_term t ^ "\"];\n" ^ mscglobal g
-  | Branch(p, q, _, t, branches) ->
-    let rec mscbranches = function
-    | [] -> ""
-    | ((pat, g)::branches) ->
-      p ^ "->" ^ q ^ " [label=\"" ^ show_term t ^ " = " ^ show_pattern pat ^ "];\n " ^ mscglobal g ^ "---;\n" ^ mscbranches branches
-    in "---;\n" ^ mscbranches branches ^ "\n"
   | Compute(p, letb, g) ->
     p ^" box "^p^ " [label=\"" ^ show_let_bind letb ^ "\"];\n" ^ mscglobal g
   | DefGlobal(name, params, g, g') ->
