@@ -72,15 +72,7 @@ and show_local_type = function
     LSend(ident, opt, t, local_type) -> "\tout(" ^ show_channel ident opt ^ ", " ^ show_term t  ^");\n"^ show_local_type local_type
   | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type local_type
   | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type local_type
-  | LRecv (ident, opt, pattern, term, local_type) -> 
-    begin
-      match pattern with
-      | PVar(x, dt) -> 
-        match dt with
-        | None -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type local_type
-        | _ -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ": " ^ show_dtype dt ^ ");\n" ^ show_local_type local_type
-      | _ -> raise (TypeError ("Error ocurred"))
-    end
+  | LRecv (ident, opt, pattern, term, local_type) -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type local_type
   | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type local_type
   | LLocalEnd -> "\t0."
 
@@ -251,7 +243,7 @@ let rec compile env forms funs princ gt =
     let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
     let env' = safe_update r x ttype env in
     
-    LRecv((if r < s then r ^ s else s ^ r), opt, PVar(x, None), t, compile env' forms funs princ g)
+    LRecv((if r < s then r ^ s else s ^ r), opt, PVar(x, ttype), t, compile env' forms funs princ g)
   | Send(s, r, _, x, t, g) ->
     let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
     let env' = safe_update r x ttype env in
@@ -302,7 +294,6 @@ let rec compile env forms funs princ gt =
 let proverif (pr:problem): unit =
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
   let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
-  List.iter (fun (p,_) -> Printf.printf "%s" (show_local_type (compile env pr.formats pr.functions p pr.protocol))) pr.principals;
   let function_types = List.map (fun f -> build_function f) pr.functions in
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
@@ -320,5 +311,5 @@ let proverif (pr:problem): unit =
   List.iter (fun e -> 
     Printf.printf "%s.\n" (show_equation e function_types)) pr.equations;
   Printf.printf "%s\n" "";
-  List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type (to_local_type pr.protocol p))) pr.principals;
+  List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type (compile env pr.formats pr.functions p pr.protocol))) pr.principals;
   Printf.printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))
