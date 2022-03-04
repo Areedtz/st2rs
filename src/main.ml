@@ -35,7 +35,6 @@ let main =
   let f = match action with
   | "tamarin" -> translate
   | "rust" -> rust_output
-  (* | "typecheck" -> typecheck *)
   | "projection" -> projection
   | "mscgen" -> Types.mscgen
   | "proverif" -> proverif

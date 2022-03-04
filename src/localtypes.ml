@@ -19,7 +19,6 @@ and show_term_list = function
 and show_pattern = function
     PVar(x, None) -> x
   | PVar(x, dt) -> x ^ ": " ^ show_dtype dt
-  | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
   | PMatch(t) -> "=" ^ show_term t
@@ -107,8 +106,8 @@ and show_branches_nr = function
 
 and show_params = function
     [] -> ""
-  | [(x, p)] -> x ^ " @ " ^ p
-  | ((x, p)::xs) -> x ^ " @ " ^ p ^ ", " ^ show_params xs
+  | [((x, dt), p)] -> x ^ ": " ^ show_dtype dt ^ " @ " ^ p
+  | (((x, dt), p)::xs) -> x ^ ": " ^ show_dtype dt ^ " @ " ^ p ^ ", " ^ show_params xs
 
 let projection (pr:problem): unit =
   Printf.printf  "%s" (show_global_type_nr pr.protocol);

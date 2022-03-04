@@ -1,8 +1,8 @@
 Problem: AccountableWarrantExecution;
 Principals: Source, Court, Decryptor, Auditor, Public;
-Knowledge: msg:bitstring@Source, 
-           id:bitstring@Source,
-           id:bitstring@Court,
+Knowledge: msg:bytes@Source, 
+           id:bytes@Source,
+           id:bytes@Court,
            msk:mskeyi@Decryptor,
            ska:skey@Auditor,
            skc:skey@Court,
@@ -12,30 +12,36 @@ Knowledge: msg:bitstring@Source,
            pkc:pkey@Auditor = pk(skc),
            pkc:pkey@Decryptor = pk(skc),
            pkd:pkey@Auditor = pk(skd);
-Types: pkey, skey, mpkeyi, mskeyi, skeyi, rand;
-Functions: OK() -> bitstring,
+Types: bytes, pkey, skey, mpkeyi, mskeyi, skeyi, rand;
+Functions: OK() -> bytes,
            pk(skey) -> pkey,
-           enc(pkey, bitstring, rand) -> bitstring,
-           dec(skey, bitstring) -> bitstring,
-           sign(skey, bitstring) -> bitstring,
-           checksign(bitstring, pkey) -> bitstring,
+           enc(pkey, bytes, rand) -> bytes,
+           dec(skey, bytes) -> bytes,
+           sign(skey, bytes) -> bytes,
+           checksign(bytes, pkey) -> bytes,
            pkibe(mskeyi) -> mpkeyi,
-           encibe(mpkeyi, bitstring, bitstring) -> bitstring,
-           extract(mskeyi, bitstring) -> skeyi,
-           decibe(bitstring, skeyi) -> bitstring,
-           blind(bitstring, rand) -> bitstring,
-           pextract(mskeyi, bitstring) -> bitstring,
-           bextract(rand, bitstring) -> skeyi,
-           pzk(bitstring, rand) -> bitstring,
-           checkzkpok(bitstring, bitstring) -> bitstring,
-           pzkenc(bitstring, rand) -> bitstring,
-           checkzkpokenc(bitstring, bitstring) -> bitstring; 
+           encibe(mpkeyi, bytes, bytes) -> bytes,
+           extract(mskeyi, bytes) -> skeyi,
+           decibe(bytes, skeyi) -> bytes,
+           blind(bytes, rand) -> bytes,
+           pextract(mskeyi, bytes) -> bytes,
+           bextract(rand, bytes) -> skeyi,
+           pzk(bytes, rand) -> bytes,
+           checkzkpok(bytes, bytes) -> bytes,
+           pzkenc(bytes, rand) -> bytes,
+           checkzkpokenc(bytes, bytes) -> bytes,
+           encwrap(bytes, rand) -> bytes,
+           encunwrap(bytes) -> <bytes, rand>,
+           signwrap(bytes, bytes, bytes) -> bytes,
+           signunwrap(bytes) -> <bytes, bytes, bytes>;
 Equations: dec(k, enc(pk(k), m, r)) = m,
            checksign(sign(ssk, m), pk(ssk)) = m,
            decibe(encibe(pkibe(msk), idi, m), extract(msk, idi)) = m,
            bextract(r, pextract(msk, blind(idi, r))) = extract(msk, idi),
            checkzkpok(blind(idi, r), pzk(idi, r)) = OK,
-           checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK;
+           checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK,
+           encunwrap(encwrap(id, r)) = <id, r>,
+           signunwrap(signwrap(a, c, z)) = <a, c, z>;
 Formats: PKIBEFORM(mpkeyi), PKFORM(pkey);
 Protocol:
 Source -> Public: mpkform = PKIBEFORM<mpk>
@@ -56,18 +62,18 @@ Court {
 Court *->* Auditor: ctcsign = signed_ctc
 Court {
     new r2: rand;
-    let audit = enc(pka, <id, r>, r2);
+    let audit = enc(pka, encwrap(id, r), r2);
     let signed_audit = sign(skc, audit);
     let b = blind(id, r);
 }
 Court *->* Decryptor: drequest = <b, pzk(id, r), signed_ctc, signed_audit, pzkenc(id, r)>
 Decryptor {
-    let <b: bitstring, pzk: bitstring, signed_ctc: bitstring, signed_audit: bitstring, pzkenc: bitstring> = drequest;
+    let <b: bytes, pzk: bytes, signed_ctc: bytes, signed_audit: bytes, pzkenc: bytes> = drequest;
     let ctc = checksign(signed_ctc, pkc);
     let audit = checksign(signed_audit, pkc);
-    new p: bitstring;
+    new p: bytes;
     let partial = if(checkzkpokenc(ctc, pzkenc) = OK() & checkzkpok(b, pzk) = OK(), pextract(msk, b), p);
-    let dsign = sign(skd, <audit, ctc, pzkenc>);
+    let dsign = sign(skd, signwrap(audit, ctc, pzkenc));
 }
 Decryptor *->* Court: partial = partial
 Decryptor *->* Auditor: dsign = dsign
@@ -79,8 +85,8 @@ Auditor -> Public: auditableproof1 = <ctcsign, dsign>
 Auditor {
     let ctc = checksign(ctcsign, pkc);
     let id_ctc = dec(ska, ctc);
-    let <audit: bitstring, ctcd: bitstring, zkenc: bitstring> = checksign(dsign, pkd);
-    let <id_audit: bitstring, r: rand> = dec(ska, audit);
+    let <audit: bytes, ctcd: bytes, zkenc: bytes> = signunwrap(checksign(dsign, pkd));
+    let <id_audit: bytes, r: rand> = encunwrap(dec(ska, audit));
 }
 Auditor -> Public: auditableproof2 = <audit, ctcd, zkenc>
 end

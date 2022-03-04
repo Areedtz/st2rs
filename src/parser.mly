@@ -82,6 +82,7 @@ term_list:
 data_type:
 | name = ID { DType(name) }
 | wrapper = ID; LEFT_ANGLE; name = ID; RIGHT_ANGLE { DAType(wrapper, name) }
+| LEFT_ANGLE; l = data_type_list; RIGHT_ANGLE { DTType(l) }
 
 data_type_list:
   | l = separated_list(COMMA, data_type)
@@ -96,8 +97,6 @@ pattern:
   { PVar(name, dt) }
 | PCT; t = term
   { PMatch(t) }
-| name = ID; LEFT_PAR; pargs = pattern_list; RIGHT_PAR
-  { PFunc(name, pargs) }
 | name = ID; LEFT_ANGLE; pargs = pattern_list; RIGHT_ANGLE
   { PForm(name, pargs) }
 | LEFT_ANGLE; pargs = pattern_list; RIGHT_ANGLE
@@ -139,7 +138,7 @@ global_type:
   { GlobalEnd };
 
 param:
-| x = ID; AT; p = ID { (x, p) }
+| x = ID; COLON; dt = data_type; AT; p = ID { ((x, dt), p) }
 
 branch_list:
 | { [] }
