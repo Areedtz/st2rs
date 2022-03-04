@@ -52,7 +52,6 @@ and term_as_type_list = function
 
 and pattern = function
     PVar(x, _) -> abstract_type
-  | PFunc(name, args) -> name ^ "(" ^ pattern_list args ^ ")"
   | PTuple(args) -> "pair(" ^ pattern_list args ^ ")"
   | PMatch(t) -> "=" ^ term_as_type t
 
@@ -63,7 +62,6 @@ and pattern_list = function
 
   and show_pattern = function
       PVar(x, _) -> x
-    | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
     | PForm(fname, args) -> show_format fname ^ "(" ^ show_pattern_list args ^ ")"
     | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
     | PMatch(t) -> "=" ^ show_term t
@@ -145,6 +143,8 @@ and rust_channel p t =
 
 
 let rust_output (pr:problem) : unit =
+  let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
+  let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
   Printf.printf "%s\n" (rust_handwritten);
   List.map (fun (p, b) ->
       Printf.printf "%s\n" (rust_channel p (to_local_type pr.protocol p))) pr.principals;
@@ -154,4 +154,4 @@ let rust_output (pr:problem) : unit =
   Printf.printf "\n%s\n" (rust_types concrete_types);
   Printf.printf "\n%s\n" (rust_formats pr.formats);
   Printf.printf "\n%s\n" (rust_functions pr.functions concrete_types);
-  List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process pr.knowledge p (to_local_type pr.protocol p))) pr.principals;
+  List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process pr.knowledge p (compile env pr.formats pr.functions p pr.protocol))) pr.principals;
