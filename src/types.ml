@@ -1,10 +1,8 @@
-open Printf
-
 exception TypeError of string
 
 type principal = string
 type ident = string
-type lemma = string
+
 (* 1. Types *)
 type data_type =
     DType of ident
@@ -13,6 +11,7 @@ type data_type =
   | DTType of data_type list (* used for tuples in type checking *)
   | DFType of ident (* used for formats *)
   | None
+
 (* Terms *)
 type term =
     Var of ident
@@ -39,9 +38,6 @@ let rec pattern_to_term = function
     PVar(x, _) -> Var x
   | PMatch t -> t
   | PTuple args -> Tuple(List.map pattern_to_term args)
-
-let id_to_var = List.map (fun x -> Var x)
-let prin_to_ident x = (x : ident)
 
 (* Let bindings *)
 type let_bind =
@@ -75,13 +71,6 @@ type local_type =
   | LEvent of ident * term list * local_type
   | LLocalEnd
 
-
-(*
-type prindis =
-  | Prin of principal
-  | DPrin of principal * ident
-*)
-
 type problem = { name: ident;
                  principals: (principal * bool) list;
                  knowledge: (ident * data_type * principal * term) list;
@@ -89,12 +78,9 @@ type problem = { name: ident;
                  functions: (ident * (data_type list * data_type * bool * data_type list)) list;
                  equations: (term * term) list;
                  formats: (ident * (data_type list)) list;
-                 protocol: global_type;
-                 lemm: lemma option}
+                 protocol: global_type }
 
-type fact = Fact of ident * term list
 type letb = LetB of pattern * term
-type msr_rule = Rule of letb list * fact list * fact list * fact list
 
 (* 2. Should do when.. *)
 
@@ -193,36 +179,6 @@ and show_params = function
 | [((x, dt), p)] -> x ^ ": " ^ show_dtype dt ^ " @ " ^ p
 | (((x, dt), p)::xs) -> x ^ ": " ^ show_dtype dt ^ " @ " ^ p ^ ", " ^ show_params xs
 
-(* show rules *)
-let show_fact (Fact(f, args)) = f ^"("^show_term_list args^")"
-let rec show_facts = function
-    [] -> ""
-  | [f] -> show_fact f
-  | f::fs -> show_fact f^", "^show_facts fs
-
-let show_rule (Rule(letb, l, e, r)) =
-  let rec show_letb = function
-      [] -> ""
-    | [LetB(pat, t)] -> show_term (pattern_to_term pat) ^" = "^ show_term t
-    | LetB(pat, t)::letb' -> show_term (pattern_to_term pat) ^" = "^ show_term t ^"\n"^show_letb letb' in
-  (if letb = [] then "" else "let " ^ show_letb letb ^ " in\n")^" [" ^ show_facts l ^"] --["^ show_facts e^"]-> ["^ show_facts r^"]\n"
-
-let rec show_rules n = function
-    [] -> ""
-  | [r] -> "rule R"^string_of_int n^":\n"^show_rule r
-  | r::rs -> "rule R"^string_of_int n^":\n"^show_rule r ^"\n\n"^show_rules (n+1) rs
-
-
-let rec show_fdefs = function
-    [] -> ""
-  | [f, (args_t, res_t, _, _)] -> f ^ "/" ^ string_of_int (List.length args_t)
-  | (f, (args_t, res_t, _, _))::fs -> f ^ "/" ^ string_of_int (List.length args_t) ^", "^show_fdefs fs
-
-let rec show_eqdefs = function
-    [] -> ""
-  | [(t1, t2)] -> show_term t1 ^ " = " ^ show_term t2
-  | (t1, t2)::ts -> show_term t1 ^ " = " ^ show_term t2 ^ ", " ^ show_eqdefs ts
-
 exception Lookup_failure
 
 (* Update list of pair with x and y, returns updated env *)
@@ -239,11 +195,6 @@ let rec initial_knowledge p e = function
   | (t', dt', p', f') :: t ->
     if p' = p then initial_knowledge p ((t', dt', f')::e) t
     else initial_knowledge p e t
-
-let rec print_sep = function
-| [] -> ()
-| [x] -> printf "%s" x
-| (x::xs) -> printf "%s, " x; print_sep xs
 
 exception SyntaxError of string
 
@@ -419,26 +370,3 @@ let rec compile env forms funs princ gt =
  | Branch(_, _, _, _, _, g) ->
    compile env princ g*)
  | _ -> LLocalEnd
-
-let mscgen (pr:problem): unit =
-  let last l = List.nth l (List.length l - 1) in
-  let rec mscglobal = function
-  | Send(p, q, _, x, t, g) -> p ^ "->" ^ q ^ " [label=\"" ^ x ^ " = " ^ show_term t ^ "\"];\n" ^ mscglobal g
-  | Branch(p, q, _, t, branches) ->
-    let rec mscbranches = function
-    | [] -> ""
-    | ((pat, g)::branches) ->
-      p ^ "->" ^ q ^ " [label=\"" ^ show_term t ^ " = " ^ show_pattern pat ^ "];\n " ^ mscglobal g ^ "---;\n" ^ mscbranches branches
-    in "---;\n" ^ mscbranches branches ^ "\n"
-  | Compute(p, letb, g) ->
-    p ^" box "^p^ " [label=\"" ^ show_let_bind letb ^ "\"];\n" ^ mscglobal g
-  | DefGlobal(name, params, g, g') ->
-    fst (List.hd pr.principals) ^ " alt " ^ fst(last pr.principals) ^" [label=\""^name ^ "("^show_params params^")\"] {\n" ^ mscglobal g ^ "\n};\n"^mscglobal g'
-  | CallGlobal(name, params) -> "\n" (* TODO: replace with a proper call *)
-  | GlobalEnd -> "\n"
-  in
-  printf "msc {\n";
-  print_sep ((List.map fst) pr.principals);
-  printf ";\n";
-  printf "%s\n" (mscglobal pr.protocol);
-  printf "}\n"

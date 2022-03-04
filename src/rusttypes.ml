@@ -8,7 +8,6 @@ let functions_variable = "f"
 let pair = "pair"
 let pair_function = functions_variable ^ "." ^ pair
 let indent = "    "
-let interface_impl_name = "Functions"
 let enum = "I"
 let enum_func =  "::"^enum
 
@@ -27,7 +26,8 @@ and show_term = function
   | Or(t1, t2) -> show_term t1 ^ " | " ^ show_term t2
   | Not(t) -> "~" ^ show_term t
 
-and show_format name = name ^enum_func
+and show_format name = name ^ enum_func
+
 (* List options: empty, single item, list *)
 and show_term_list_without_lending = function
     [] -> ""
@@ -60,16 +60,16 @@ and pattern_list = function
   | [x] -> pattern x
   | (x::xs) -> pattern x ^ ", " ^ pattern_list xs
 
-  and show_pattern = function
-      PVar(x, _) -> x
-    | PForm(fname, args) -> show_format fname ^ "(" ^ show_pattern_list args ^ ")"
-    | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
-    | PMatch(t) -> "=" ^ show_term t
+and show_pattern = function
+    PVar(x, _) -> x
+  | PForm(fname, args) -> show_format fname ^ "(" ^ show_pattern_list args ^ ")"
+  | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
+  | PMatch(t) -> "=" ^ show_term t
 
-  and show_pattern_list = function
-      [] -> ""
-    | [x] -> show_pattern x
-    | (x::xs) -> show_pattern x ^ ", " ^ show_pattern_list xs
+and show_pattern_list = function
+    [] -> ""
+  | [x] -> show_pattern x
+  | (x::xs) -> show_pattern x ^ ", " ^ show_pattern_list xs
 
 and channels = function
     LSend(_, opt, t, local_type) -> "Send<Repr<" ^ term_as_type t ^ ">, " ^ channels local_type ^ ">"
@@ -94,23 +94,6 @@ and functions (f : (ident * (data_type list * data_type * bool)) list) =
 and print ident term =
   "println!(\"" ^ ident ^ ": " ^ String.concat " " (List.map (fun t -> "{}") term) ^ "\", " ^ show_term_list term ^ ");\n"
 
-and fresh t =
-  "fresh_" ^ show_dtype t
-
-and process = function
-    LSend(_, opt, t, local_type) -> indent ^ "let c = c.send(" ^ show_term t ^ ");\n" ^ process local_type
-  | LNew (ident, data_type, local_type) -> indent ^ "let " ^ ident ^ " = " ^ "f." ^ fresh data_type ^ "();\n" ^ process local_type
-  | LLet (PMatch(ident), term, local_type) ->
-    indent ^ "if " ^ show_term ident ^ " != " ^ show_term term ^ " { panic!(\"" ^show_term ident ^ " does not match " ^ show_term term  ^"\") };\n" ^ process local_type
-  | LLet (ident, term, local_type) -> indent ^ "let " ^ show_pattern ident ^ " = " ^ show_term term ^ ";\n" ^ process local_type
-  | LRecv (_, opt, pattern, term, local_type) ->  indent ^ "let (c, " ^ show_pattern pattern ^") = c.recv();\n" ^ process local_type
-  | LLocalEnd -> indent ^ "c.close();"
-  | LEvent (ident, term, local_type) -> indent ^ print ident term^ process local_type
-  | _ -> "0."
-
-(* and rust_process principal proc = *)
-  (* "fn " ^ String.lowercase principal ^ "(c: Chan<(), " ^ principal ^ ">, "^functions_variable ^ ": &impl Interface" ^") {\n" ^ process proc ^"\n}" *)
-
 and print_type t =
   match t with
   | DType dtype -> dtype
@@ -124,20 +107,6 @@ and rust_a_types type_list =
   let types = List.map (function DAType(s1,s2) -> "#[derive(Serialize, Deserialize)]\npub struct " ^ s1 ^ "<" ^ s2 ^">(Vec<u8>, PhantomData<T>);") type_list in
   String.concat "\n" (types)
 
-
-and rust_interface (f : (ident * (data_type list * data_type * bool)) list) t =
-  let freshTypeFunctions = List.map (fun (typ) -> (fresh typ, ([], typ, false))) t in
-  "trait Interface {\n" ^ indent ^ String.concat (";\n" ^indent) (functions (f @ freshTypeFunctions)) ^ ";\n}"
-
-and rust_impl_interface (f : (ident * (data_type list * data_type * bool)) list) t =
-  let freshTypeFunctions = List.map (fun (typ) -> (fresh typ, ([], typ, false))) t in
-  "impl Interface for "^ interface_impl_name ^" {\n" ^ indent ^ String.concat (" { unimplemented!() }\n" ^indent) (functions (f @ freshTypeFunctions)) ^ "{ unimplemented!() }\n}"
-
-and print_format f =
-  match f with
-  | (name, data_types) -> "enum " ^  name ^ " { "^ enum ^"(" ^ String.concat ", " (List.map (fun data -> print_type data) data_types) ^ ") }"
-
-
 and rust_channel p t =
   "type " ^ p ^ " = " ^ channels t ^ ";"
 
@@ -146,7 +115,7 @@ let rust_output (pr:problem) : unit =
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
   let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
   Printf.printf "%s\n" (rust_handwritten);
-  List.map (fun (p, b) ->
+  List.iter (fun (p, b) ->
       Printf.printf "%s\n" (rust_channel p (to_local_type pr.protocol p))) pr.principals;
   let abstract_types = List.filter_map (function DAType(s1,s2) -> Some(DAType(s1,s2)) | _ -> None) pr.types in
   let concrete_types = List.filter_map (function DType(s1) -> Some(DType(s1)) | _ -> None) pr.types in
