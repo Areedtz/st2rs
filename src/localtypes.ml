@@ -58,9 +58,7 @@ and show_global_type2 = function
 and unwrapGlobal global local =
   match global with
   | Compute(p, letb, g) -> Compute(p, letb, (unwrapGlobal g local))
-  | GlobalEnd -> local
-  | CallGlobal (_,_) -> local
-
+  | _ -> local
 
 and to_local_type global_type participant =
   match global_type with
@@ -108,8 +106,3 @@ and show_params = function
     [] -> ""
   | [((x, dt), p)] -> x ^ ": " ^ show_dtype dt ^ " @ " ^ p
   | (((x, dt), p)::xs) -> x ^ ": " ^ show_dtype dt ^ " @ " ^ p ^ ", " ^ show_params xs
-
-let projection (pr:problem): unit =
-  Printf.printf  "%s" (show_global_type_nr pr.protocol);
-  List.iter (fun (p, b) ->
-    Printf.printf "let %s = %s\n" p (show_local_type (to_local_type pr.protocol p))) pr.principals
