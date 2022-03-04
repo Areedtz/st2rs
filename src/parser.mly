@@ -8,7 +8,7 @@
 %token LEFT_PAR RIGHT_PAR LEFT_ANGLE RIGHT_ANGLE LEFT_BRACE RIGHT_BRACE LEFT_BRACK RIGHT_BRACK
 %token EQ AND OR NOT DIV PLUS
 %token NEW LET EVENT IN END MATCH WITH DATA IF
-%token PROBLEM PRINCIPALS KNOWLEDGE TYPES FUNCTIONS EQUATIONS FORMATS PROTOCOL DISHONEST LEMMA
+%token PROBLEM PRINCIPALS KNOWLEDGE TYPES FUNCTIONS EQUATIONS FORMATS PROTOCOL DISHONEST
 %token EOF
 
 %start <Types.problem option> program
@@ -26,10 +26,8 @@ program:
   FUNCTIONS; COLON; f = separated_list(COMMA, fundef); SEMI;
   EQUATIONS; COLON; e = separated_list(COMMA, eqdef); SEMI;
   FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI;
-  PROTOCOL; COLON; g = global_type;
-  l = opt_lemm; EOF
-  (* Add Lemma as string *)
-{ Some { name = n; principals = p; knowledge = k; types = t; functions = f; equations = e; formats = formats; protocol = g; lemm = l} };
+  PROTOCOL; COLON; g = global_type; EOF
+{ Some { name = n; principals = p; knowledge = k; types = t; functions = f; equations = e; formats = formats; protocol = g } };
 
 fundef:
 | f = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR; ARROW; return_type = data_type { (f, (params, return_type, false, [])) }
@@ -144,8 +142,3 @@ branch_list:
 | { [] }
 | p = pattern; COLON; gt = global_type; branches = branch_list
   { ((p, gt)::branches) };
-
-opt_lemm:
-| LEMMA; COLON; s = STRING
-    { Some s }
-| { None }

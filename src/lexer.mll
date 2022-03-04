@@ -62,7 +62,6 @@ rule read =
   | "Equations"  { EQUATIONS }
   | "Formats"    { FORMATS }
   | "Protocol"   { PROTOCOL }
-  | "Lemma"      { LEMMA }
   | "->"         { ARROW }
   | "*->"        { AUTH }
   | "->*"        { CONF }

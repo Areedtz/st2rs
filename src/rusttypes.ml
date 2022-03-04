@@ -7,7 +7,6 @@ let concrete_type = "/* unimplemented */"
 let pair = "pair"
 let pair_function = pair
 let indent = "    "
-let interface_impl_name = "Functions"
 let enum = "I"
 let enum_func =  "::"^enum
 
@@ -26,7 +25,8 @@ and show_term = function
   | Or(t1, t2) -> show_term t1 ^ " | " ^ show_term t2
   | Not(t) -> "~" ^ show_term t
 
-and show_format name = name ^enum_func
+and show_format name = name ^ enum_func
+
 (* List options: empty, single item, list *)
 and show_term_list_without_lending = function
     [] -> ""
@@ -59,16 +59,16 @@ and pattern_list = function
   | [x] -> pattern x
   | (x::xs) -> pattern x ^ ", " ^ pattern_list xs
 
-  and show_pattern = function
-      PVar(x, _) -> x
-    | PForm(fname, args) -> show_format fname ^ "(" ^ show_pattern_list args ^ ")"
-    | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
-    | PMatch(t) -> "=" ^ show_term t
+and show_pattern = function
+    PVar(x, _) -> x
+  | PForm(fname, args) -> show_format fname ^ "(" ^ show_pattern_list args ^ ")"
+  | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
+  | PMatch(t) -> "=" ^ show_term t
 
-  and show_pattern_list = function
-      [] -> ""
-    | [x] -> show_pattern x
-    | (x::xs) -> show_pattern x ^ ", " ^ show_pattern_list xs
+and show_pattern_list = function
+    [] -> ""
+  | [x] -> show_pattern x
+  | (x::xs) -> show_pattern x ^ ", " ^ show_pattern_list xs
 
 and createArguments (t:data_type list) =
   let rec inner dt i =
@@ -85,9 +85,6 @@ and functions (f : (ident * (data_type list * data_type * bool)) list) =
 and print ident term =
   "println!(\"" ^ ident ^ ": " ^ String.concat " " (List.map (fun t -> "{}") term) ^ "\", " ^ show_term_list term ^ ");\n"
 
-and fresh t =
-  "fresh_" ^ show_dtype t
-
 and print_type t =
   match t with
   | DType dtype -> dtype
@@ -100,19 +97,6 @@ and rust_types type_list =
 and rust_a_types type_list =
   let types = List.map (function DAType(s1,s2) -> "#[derive(Serialize, Deserialize)]\npub struct " ^ s1 ^ "<" ^ s2 ^">(Vec<u8>, PhantomData<T>);") type_list in
   String.concat "\n" (types)
-
-
-and rust_interface (f : (ident * (data_type list * data_type * bool)) list) t =
-  let freshTypeFunctions = List.map (fun (typ) -> (fresh typ, ([], typ, false))) t in
-  "trait Interface {\n" ^ indent ^ String.concat (";\n" ^indent) (functions (f @ freshTypeFunctions)) ^ ";\n}"
-
-and rust_impl_interface (f : (ident * (data_type list * data_type * bool)) list) t =
-  let freshTypeFunctions = List.map (fun (typ) -> (fresh typ, ([], typ, false))) t in
-  "impl Interface for "^ interface_impl_name ^" {\n" ^ indent ^ String.concat (" { unimplemented!() }\n" ^indent) (functions (f @ freshTypeFunctions)) ^ "{ unimplemented!() }\n}"
-
-and print_format f =
-  match f with
-  | (name, data_types) -> "enum " ^  name ^ " { "^ enum ^"(" ^ String.concat ", " (List.map (fun data -> print_type data) data_types) ^ ") }"
 
 and channels acc = function
   Send(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
