@@ -1,6 +1,5 @@
 open Types
 open Localtypes
-open Typecheck2
 
 let rec show_params = function
   [] -> ""
