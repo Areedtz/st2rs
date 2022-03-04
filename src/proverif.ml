@@ -36,6 +36,7 @@ let rec show_term = function
   | Or(t1, t2) -> show_term t1 ^ " || " ^ show_term t2
   | Not(t) -> "not(" ^ show_term t ^ ")"
   | If(cond, tterm, fterm) -> "( if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ " )"
+  | Null -> ""
 
 and show_term_list = function
   [] -> ""

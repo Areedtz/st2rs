@@ -70,13 +70,9 @@ type global_type =
 type local_type =
     LSend of ident * channel_option * term * local_type
   | LRecv of ident * channel_option * pattern * term * local_type
-  | LSelect of principal * (term * local_type) list
-  | LBranch of principal * (pattern * local_type) list
   | LNew of ident * data_type * local_type
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
-  | LDefLocal of ident * ident list * local_type * local_type
-  | LCallLocal of ident * term list * local_type
   | LLocalEnd
 
 
