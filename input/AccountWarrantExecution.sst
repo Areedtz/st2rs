@@ -38,8 +38,8 @@ Equations: dec(k, enc(pk(k), m, r)) = m,
            checksign(sign(ssk, m), pk(ssk)) = m,
            decibe(encibe(pkibe(msk), idi, m), extract(msk, idi)) = m,
            bextract(r, pextract(msk, blind(idi, r))) = extract(msk, idi),
-           checkzkpok(blind(idi, r), pzk(idi, r)) = OK,
-           checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK,
+           checkzkpok(blind(idi, r), pzk(idi, r)) = OK(),
+           checkzkpokenc(enc(pk(sk), idi, r), pzkenc(idi, r)) = OK(),
            encunwrap(encwrap(id, r)) = <id, r>,
            signunwrap(signwrap(a, c, z)) = <a, c, z>;
 Formats: PKIBEFORM(mpkeyi), PKFORM(pkey);
