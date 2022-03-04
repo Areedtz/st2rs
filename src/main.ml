@@ -5,7 +5,6 @@ open Translation
 open Rusttypes
 open Localtypes
 open Proverif
-open Typecheck
 
 let print_position outx lexbuf =
   let pos = lexbuf.lex_curr_p in
@@ -36,7 +35,6 @@ let main =
   let f = match action with
   | "tamarin" -> translate
   | "rust" -> rust_output
-  | "typecheck" -> typecheck
   | "projection" -> projection
   | "mscgen" -> Types.mscgen
   | "proverif" -> proverif
