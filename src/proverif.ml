@@ -72,8 +72,9 @@ and show_local_type = function
   | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type local_type
   | LRecv (ident, opt, pattern, term, local_type) -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type local_type
   | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type local_type
-  | LChoose(lb, rb, local_type) -> "\tChoose:\n\tLeft:\n" ^ show_local_type lb ^ "\n\tRight:\n" ^ show_local_type rb ^ "\n" ^ show_local_type local_type
-  | LOffer(lb, rb, local_type) -> "\tOffer:\n\tLeft:\n" ^ show_local_type lb ^ "\n\tRight:\n" ^ show_local_type rb ^ "\n" ^ show_local_type local_type
+  | LChoose(lb, rb, local_type) -> "\tChoose:\n\t\tLeft:\n\t\t" ^ show_local_type lb ^ "\n\t\tRight:\n\t\t" ^ show_local_type rb ^ "\n" ^ show_local_type local_type
+  | LOffer(lb, rb, local_type) -> "\tOffer:\n\t\tLeft:\n\t\t" ^ show_local_type lb ^ "\n\t\tRight:\n\t\t" ^ show_local_type rb ^ "\n" ^ show_local_type local_type
+  | LBranchEnd -> "\tBranchEnd"
   | LLocalEnd -> "\t0."
 
 and show_format = function
@@ -101,12 +102,11 @@ and instantiate_party_process_vars party = function
   knowledge -> List.map (fun (i, _, _) -> i) (List.assoc party knowledge)
 
 let rec build_channels acc = function
-    Send(sender, receiver, opt, _, _, g) when opt != Public ->
+    Send(sender, receiver, opt, _, _, g) | Branch(sender, receiver, opt, _, _, g) when opt != Public ->
       let channel_name = show_channel (if receiver < sender then receiver ^ sender else sender ^ receiver) opt in
       let parties = (sender, receiver) in
       build_channels ((parties, channel_name)::acc) g
-  | Send(_, _, _, _, _, g) -> build_channels acc g
-  | Compute(_, _, g) -> build_channels acc g
+  | Send(_, _, _, _, _, g) | Branch(_, _, _, _, _, g) | Compute(_, _, g) -> build_channels acc g
   | DefGlobal(_, _, g, g') -> build_channels (build_channels acc g) g'
   | _ -> List.sort_uniq (fun (_, a) (_, b) -> compare a b) acc
 
