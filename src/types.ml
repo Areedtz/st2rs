@@ -61,6 +61,7 @@ type global_type =
   | DefGlobal of ident * ((ident * data_type) * principal) list * global_type * global_type
   | CallGlobal of ident * term list
   | GlobalEnd
+  | BranchEnd
 
 (* Local Type *)
 type local_type =
@@ -72,6 +73,7 @@ type local_type =
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
   | LLocalEnd
+  | LBranchEnd
 
 type problem = { name: ident;
                  principals: (principal * bool) list;
@@ -359,12 +361,13 @@ let rec compile env forms funs princ gt =
          compile_letb inner_env' next
      | LetEnd -> compile inner_env forms funs princ g in
    compile_letb env letb
- (*| Branch(s, r, opt, lb, rb, g) when princ = s ->
+ | Branch(s, r, _, lb, rb, g) when princ = s ->
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(compile env' princ lb, compile env' princ rb, compile env princ g)
- | Branch(s, r, opt, lb, rb, g) when princ = r ->
+   LOffer(compile env' forms funs princ lb, compile env' forms funs princ rb, compile env forms funs princ g)
+ | Branch(s, r, _, lb, rb, g) when princ = r ->
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(compile env' princ lb, compile env' princ rb, compile env princ g)
+   LChoose(compile env' forms funs princ lb, compile env' forms funs princ rb, compile env forms funs princ g)
  | Branch(_, _, _, _, _, g) ->
-   compile env princ g*)
+   compile env forms funs princ g
+ | BranchEnd -> LBranchEnd
  | _ -> LLocalEnd
