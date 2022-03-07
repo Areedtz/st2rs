@@ -25,10 +25,8 @@ program:
   FUNCTIONS; COLON; f = separated_list(COMMA, fundef); SEMI;
   EQUATIONS; COLON; e = separated_list(COMMA, eqdef); SEMI;
   FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI;
-  PROTOCOL; COLON; g = global_type;
-  l = opt_lemm; EOF
-  (* Add Lemma as string *)
-{ Some { name = n; principals = p; knowledge = k; types = t; functions = f; equations = e; formats = formats; protocol = g; lemm = l} };
+  PROTOCOL; COLON; g = global_type; EOF
+{ Some { name = n; principals = p; knowledge = k; types = t; functions = f; equations = e; formats = formats; protocol = g } };
 
 fundef:
 | f = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR; ARROW; return_type = data_type { (f, (params, return_type, false, [])) }
@@ -81,6 +79,7 @@ term_list:
 data_type:
 | name = ID { DType(name) }
 | wrapper = ID; LEFT_ANGLE; name = ID; RIGHT_ANGLE { DAType(wrapper, name) }
+| LEFT_ANGLE; l = data_type_list; RIGHT_ANGLE { DTType(l) }
 
 data_type_list:
   | l = separated_list(COMMA, data_type)
@@ -95,8 +94,6 @@ pattern:
   { PVar(name, dt) }
 | PCT; t = term
   { PMatch(t) }
-| name = ID; LEFT_PAR; pargs = pattern_list; RIGHT_PAR
-  { PFunc(name, pargs) }
 | name = ID; LEFT_ANGLE; pargs = pattern_list; RIGHT_ANGLE
   { PForm(name, pargs) }
 | LEFT_ANGLE; pargs = pattern_list; RIGHT_ANGLE
@@ -138,9 +135,9 @@ global_type:
   { GlobalEnd };
 
 param:
-| x = ID; AT; p = ID { (x, p) }
+| x = ID; COLON; dt = data_type; AT; p = ID { ((x, dt), p) }
 
-opt_lemm:
-| LEMMA; COLON; s = STRING
-    { Some s }
-| { None }
+branch_list:
+| { [] }
+| p = pattern; COLON; gt = global_type; branches = branch_list
+  { ((p, gt)::branches) };

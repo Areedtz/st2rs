@@ -12,10 +12,16 @@ and show_function = function
 and build_function = function
     (f, (args_t, _, _, _)) -> (f, List.map (fun t -> show_dtype t) args_t)
 
+and show_dtype t =
+  match t with
+  | DType(dtype) -> dtype
+  | DAType(at, dt) -> at ^ "<" ^ dt ^">"
+  | DTType(_) | DFType(_) -> "bitstring"
+  | _ -> ""
+
 and show_pattern = function
     PVar(x, None) -> x
   | PVar(x, dt) -> x ^ ": " ^ show_dtype dt
-  | PFunc(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "(" ^ show_pattern_list args ^ ")"
   | PMatch(t) -> "=" ^ show_term t
@@ -30,6 +36,7 @@ let rec show_term = function
   | Or(t1, t2) -> show_term t1 ^ " || " ^ show_term t2
   | Not(t) -> "not(" ^ show_term t ^ ")"
   | If(cond, tterm, fterm) -> "( if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ " )"
+  | Null -> ""
 
 and show_term_list = function
   [] -> ""
@@ -59,30 +66,22 @@ and show_channel parties = function
   | Conf -> "c_" ^ parties ^ "_conf"
   | AuthConf -> "c_" ^ parties ^ "_authconf"
 
-and show_local_type env = function
-    LSend(ident, opt, t, local_type) -> "\tout(" ^ show_channel ident opt ^ ", " ^ show_term t  ^");\n"^ show_local_type env local_type
-  | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type env local_type
-  | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type env local_type
-  | LRecv (ident, opt, pattern, term, local_type) -> 
-    begin
-      match pattern with
-      | PVar(x, _) -> 
-        match List.assoc_opt x env with
-        | Some(dt) -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ": " ^ show_dtype dt ^ ");\n" ^ show_local_type env local_type
-        | None -> raise (TypeError ("Could not find variable in env"))
-      | _ -> raise (TypeError ("Error ocurred"))
-    end
-  | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type env local_type
-  | LChoose(lb, rb, local_type) -> "\tChoose:\n\tLeft:\n" ^ show_local_type env lb ^ "\n\tRight:\n" ^ show_local_type env rb ^ "\n" ^ show_local_type env local_type
-  | LOffer(lb, rb, local_type) -> "\tOffer:\n\tLeft:\n" ^ show_local_type env lb ^ "\n\tRight:\n" ^ show_local_type env rb ^ "\n" ^ show_local_type env local_type
+and show_local_type = function
+    LSend(ident, opt, t, local_type) -> "\tout(" ^ show_channel ident opt ^ ", " ^ show_term t  ^");\n"^ show_local_type local_type
+  | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type local_type
+  | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type local_type
+  | LRecv (ident, opt, pattern, term, local_type) -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type local_type
+  | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type local_type
+  | LChoose(lb, rb, local_type) -> "\tChoose:\n\tLeft:\n" ^ show_local_type lb ^ "\n\tRight:\n" ^ show_local_type rb ^ "\n" ^ show_local_type local_type
+  | LOffer(lb, rb, local_type) -> "\tOffer:\n\tLeft:\n" ^ show_local_type lb ^ "\n\tRight:\n" ^ show_local_type rb ^ "\n" ^ show_local_type local_type
   | LLocalEnd -> "\t0."
 
 and show_format = function
   (name, types) -> "fun " ^ name ^ "(" ^ (String.concat ", " (List.map (fun t -> show_dtype t) types)) ^ "): bitstring [data]."
 
-and show_env = function
-  env ->
-    let vars = List.flatten (List.map (fun (_, e) -> e) env) in
+and show_knowledge = function
+knowledge ->
+    let vars = List.flatten (List.map (fun (_, e) -> e) knowledge) in
     let uniq_vars = List.sort_uniq (fun (a,_,_) (c,_,_) -> compare a c) vars in
     let sorted = List.sort (fun (_,_,f) (_,_,f') -> 
       match f with 
@@ -99,7 +98,7 @@ and show_party_params = function
   params -> List.map (fun (name, dtype, _) -> name ^ ": " ^ show_dtype dtype) params
 
 and instantiate_party_process_vars party = function
-  env -> List.map (fun (i, _, _) -> i) (List.assoc party env)
+  knowledge -> List.map (fun (i, _, _) -> i) (List.assoc party knowledge)
 
 let rec build_channels acc = function
     Send(sender, receiver, opt, _, _, g) when opt != Public ->
@@ -120,11 +119,24 @@ let rec show_party_channels p acc suffix channels =
   | (_::xs) -> show_party_channels p acc suffix xs
 
 let proverif (pr:problem): unit =
-  let env = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
+  let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
+  let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
   let function_types = List.map (fun f -> build_function f) pr.functions in
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
-  List.iter (fun (p, _) -> 
-    Printf.printf "%s" (show_local_type (List.assoc p env) (compile env p pr.protocol))
-  ) pr.principals;
-  
+  Printf.printf  "(* Protocol: %s *)\n\n" pr.name;
+  Printf.printf "free c: channel.%s\n\n" "";
+  List.iter (fun t -> 
+    Printf.printf "type %s.\n" (show_dtype t)) pr.types;
+  Printf.printf "%s\n" "";
+  List.iter (fun f -> 
+    Printf.printf "%s\n" (show_format f)) pr.formats;
+  Printf.printf "%s\n" "";
+  List.iter (fun t -> 
+    Printf.printf "%s.\n" (show_function t)) pr.functions;
+  Printf.printf "%s\n" "";
+  List.iter (fun e -> 
+    Printf.printf "%s.\n" (show_equation e function_types)) pr.equations;
+  Printf.printf "%s\n" "";
+  List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type (compile env pr.formats pr.functions p pr.protocol))) pr.principals;
+  Printf.printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))

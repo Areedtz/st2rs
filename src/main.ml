@@ -1,7 +1,6 @@
 open Lexer
 open Lexing
 open Printf
-open Translation
 open Rusttypes
 open Localtypes
 open Proverif
@@ -31,13 +30,9 @@ let main =
   let inx = open_in filename in
   let lexbuf = Lexing.from_channel inx in
   lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = filename };
-  let action = if Array.length Sys.argv > 2 then Sys.argv.(2) else "translate" in
+  let action = if Array.length Sys.argv > 2 then Sys.argv.(2) else "rust" in
   let f = match action with
-  | "tamarin" -> translate
   | "rust" -> rust_output
-  (* | "typecheck" -> typecheck *)
-  | "projection" -> projection
-  | "mscgen" -> Types.mscgen
   | "proverif" -> proverif
   | _ -> fun x -> ()
   in
