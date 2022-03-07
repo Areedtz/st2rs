@@ -48,8 +48,8 @@ rule read =
   | "in"     { IN }
   | "end"    { END }
   | "if"     { IF }
-  | "left"   { LEFT }
-  | "right"  { RIGHT }
+  | "Left"   { LEFT }
+  | "Right"  { RIGHT }
   | "branch_end" { BRANCH_END }
   | "dishonest"  { DISHONEST }
   | "Problem"    { PROBLEM }
