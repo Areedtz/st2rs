@@ -145,6 +145,24 @@ let output_principal_channels principal_locals =
     | LLocalEnd -> channels in
   List.fold_left (fun acc (channel_name, channel) -> acc ^ (Printf.sprintf "type %s = %s;\n" channel_name channel)) "" (inner principal_locals [])
 
+and show_knowledge = function
+  knowledge ->
+      let vars = List.flatten (List.map (fun (_, e) -> e) knowledge) in
+      let uniq_vars = List.sort_uniq (fun (a,_,_) (c,_,_) -> compare a c) vars in
+      let sorted = List.sort (fun (_,_,f) (_,_,f') -> 
+        match f with 
+        | Null -> -1
+        | _ -> 1
+        ) uniq_vars in
+      (String.concat "\n" (List.map (fun (name, dtype, func) -> 
+        match func with
+        | Null -> "\tlet " ^ name ^ " = fresh_" ^ show_dtype dtype ^ "();"
+        | _ -> "\tlet " ^ name ^ " = " ^ show_term func ^ ";"
+        ) sorted) ^ "\n")
+  
+let rec show_principal_knowledge principal knowledge =
+  List.map (fun (t, _, _, _) -> t) (List.filter (fun (_, _, p, _) -> principal = p) knowledge)
+
 let rust_output (pr:problem) : unit =
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
   let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
@@ -162,3 +180,11 @@ let rust_output (pr:problem) : unit =
   Printf.printf "\n%s\n" (rust_functions pr.functions concrete_types);
   Printf.printf "\n%s\n" (rust_equations function_types pr.equations);
   List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process (principal_channels p channel_pairs) pr.knowledge p (List.assoc p principal_locals))) pr.principals;
+
+  Printf.printf "fn main() {%s\n" "";
+  Printf.printf "%s\n" (show_knowledge knowledge);
+  List.iteri (fun i (s, r) -> if i mod 2 = 0 then () else Printf.printf "\tlet (%s, %s) = session_channel();\n" ("c_" ^ s ^ r) ("c_" ^ r ^ s)) channel_pairs;
+  List.iter (fun (p, _) ->
+    Printf.printf "\tlet %s_t = thread::spawn(move || %s(%s));\n" (String.lowercase p) (String.lowercase p) (String.concat ", " ((List.map (fun (s, r) -> "c_" ^ s ^ r) (List.rev (principal_channels p channel_pairs)))@(show_principal_knowledge p pr.knowledge)))) pr.principals;
+  Printf.printf "\tlet _ = (%s);\n" (String.concat ", " (List.map (fun (p, _) -> (String.lowercase p) ^ "_t.join()") pr.principals));
+  Printf.printf "}%s" "";
