@@ -67,8 +67,8 @@ type global_type =
 type local_type =
   LSend of principal * principal * channel_option * term * data_type * local_type
   | LRecv of principal * principal * channel_option * pattern * term * local_type
-  | LOffer of local_type * local_type * (ident * data_type) list * local_type
-  | LChoose of local_type * local_type * (ident * data_type) list * local_type
+  | LOffer of principal * principal * local_type * local_type * (ident * data_type) list * local_type
+  | LChoose of principal * principal * local_type * local_type * (ident * data_type) list * local_type
   | LNew of ident * data_type * local_type
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
@@ -365,10 +365,10 @@ let rec compile env forms funs princ gt =
    compile_letb env letb
  | Branch(s, r, _, lb, rb, g) when princ = s ->
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(compile env' forms funs princ lb, compile env' forms funs princ rb, List.assoc princ env', compile env forms funs princ g)
+   LOffer(s, r, compile env' forms funs princ lb, compile env' forms funs princ rb, List.assoc princ env', compile env forms funs princ g)
  | Branch(s, r, _, lb, rb, g) when princ = r ->
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(compile env' forms funs princ lb, compile env' forms funs princ rb, List.assoc princ env', compile env forms funs princ g)
+   LChoose(s, r, compile env' forms funs princ lb, compile env' forms funs princ rb, List.assoc princ env', compile env forms funs princ g)
  | Branch(_, _, _, _, _, g) ->
    compile env forms funs princ g
  | BranchEnd -> LBranchEnd
