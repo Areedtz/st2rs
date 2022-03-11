@@ -60,22 +60,12 @@ and unwrapGlobal global local =
   | Compute(p, letb, g) -> Compute(p, letb, (unwrapGlobal g local))
   | _ -> local
 
-and to_local_type global_type participant =
-  match global_type with
-    Send(sender, receiver, opt, x, t, g) when participant = sender -> LSend((if receiver < sender then receiver ^ sender else sender ^ receiver), opt, t, to_local_type g participant)
-  | Send(sender, receiver, opt, x, t, g) when participant = receiver -> LRecv((if receiver < sender then receiver ^ sender else sender ^ receiver), opt, PVar(x, None), t, to_local_type g participant)
-  | Send(_, _, _, _, _, g) -> to_local_type g participant
-  | Compute(p, letb, g) when participant = p -> local_let_bind letb (to_local_type g participant)
-  | Compute(p, letb, g) -> (to_local_type g participant)
-  | DefGlobal(name, params, g, g') -> to_local_type (unwrapGlobal g' g) participant
-  | _ -> LLocalEnd
-
 and show_local_type local =
   match local with
-    LSend(p, opt, t, local_type) -> "out(" ^ show_term t  ^") \n"^ show_local_type local_type
+    LSend(_, _, _, t, _, local_type) -> "out(" ^ show_term t  ^") \n"^ show_local_type local_type
   | LNew (ident, data_type, local_type) -> "new " ^ ident ^ " : " ^ show_dtype data_type ^ ";\n" ^ show_local_type local_type
   | LLet (ident, term, local_type) -> "let " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type local_type
-  | LRecv (principal, opt, pattern, term, local_type) -> "let "^ show_pattern pattern  ^" = in() \n"^ show_local_type local_type
+  | LRecv (_, _, _, pattern, _, local_type) -> "let " ^ show_pattern pattern  ^ " = in() \n" ^ show_local_type local_type
   | LEvent (ident, termlist, local_type) -> "event " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type local_type
   | LLocalEnd -> "0."
 

@@ -7,7 +7,6 @@ use std::{marker};
 use serde::{Serialize, Deserialize};
 use std::thread;
 use std::borrow::Borrow;
-use rand::Rng;
 use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
 
@@ -32,7 +31,7 @@ fn close<E>(c: Chan<E, Eps>) { c.close() }
 let printHandWritten = handwritten
 
 let rec printStructPattern = function
-      StructPattern(rId, args) -> printrId rId ^ "(" ^ String.concat "," (List.map (fun a -> printrId a) args) ^ ")"
+      StructPattern(rId, args) -> printrId rId ^ "(" ^ String.concat ", " (List.map (fun a -> printrId a) args) ^ ")"
 
 and printStructValues = function
     StructValue(x) -> printExp x
@@ -50,11 +49,11 @@ and printrId = function
 and printExp = function
       Id(id) -> printrId id
     | Ids([]) -> ""
-    | Ids(lst) -> "(" ^ String.concat "," (List.map (fun i-> printrId i) lst) ^ ")"
+    | Ids(lst) -> "(" ^ String.concat ", " (List.map (fun i-> printrId i) lst) ^ ")"
     | Ref(ref, exp) -> "&" ^ printExp exp
-    | EStruct(id, StructValues(structValues)) -> printrId id ^ "(" ^ String.concat "," (List.map (fun x-> printStructValues x) structValues) ^ ")"
+    | EStruct(id, StructValues(structValues)) -> printrId id ^ "(" ^ String.concat ", " (List.map (fun x-> printStructValues x) structValues) ^ ")"
     | Exp(exp1, exp2) -> printExp exp1 ^ "(" ^ printExp exp2 ^ ")"
-    | Exps(exps) -> String.concat "," (List.map (fun i-> printExp i) exps)
+    | Exps(exps) -> String.concat ", " (List.map (fun i-> printExp i) exps)
     | OExp(exp, Equals, exp2) -> "&" ^ printExp exp ^ " == " ^  "&" ^ printExp exp2
     | OExp(exp, And, exp2) -> printExp exp ^ " && " ^ printExp exp2
     | Unimplemented -> "unimplemented!()"
@@ -66,7 +65,7 @@ and printSDeclExp = function
 (* Repr::from_repr *)
 and printBlock = function
       Empty -> "{}"
-    | BStmts(lst) -> ("{\n") ^ String.concat (";\n") (List.map (fun s -> printStatements s) lst) ^ "\n}"
+    | BStmts(lst) -> ("{\n\t") ^ String.concat (";\n\t") (List.map (fun s -> printStatements s) lst) ^ "\n}"
 
 and printType = function
     U8 -> "u8"

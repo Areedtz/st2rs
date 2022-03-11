@@ -64,8 +64,8 @@ type global_type =
 
 (* Local Type *)
 type local_type =
-    LSend of ident * channel_option * term * local_type
-  | LRecv of ident * channel_option * pattern * term * local_type
+    LSend of principal * principal * channel_option * term * data_type * local_type
+  | LRecv of principal * principal * channel_option * pattern * term * local_type
   | LNew of ident * data_type * local_type
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
@@ -96,6 +96,8 @@ let rec show_term = function
   | Not(t) -> "~" ^ show_term t
   | If(cond, tterm, fterm) -> "if(" ^ show_term cond ^ ", " ^ show_term tterm ^ ", " ^ show_term fterm ^ ")"
   | Null -> ""
+
+and get_channel_name sender receiver = if receiver < sender then receiver ^ sender else sender ^ receiver
 
 (* List options: empty, single item, list *)
 and show_term_list = function
@@ -256,7 +258,7 @@ let rec get_term_type env forms funs = function
                  raise (TypeError (Printf.sprintf "Variable type %s doesn't match %s in signature of %s" (show_dtype arg_type) (show_dtype param_type) f))
                else ()
            ) args;
-           DTType(List.map (fun t -> get_term_type env forms funs t) args)
+           DFType f
      | None -> raise (SyntaxError ("Form " ^ f ^ " doesn't exist in forms"))
    end
  | Tuple(args) -> DTType(List.map (fun t -> get_term_type env forms funs t) args)
@@ -318,12 +320,12 @@ let rec compile env forms funs princ gt =
  | Send(s, r, opt, x, t, g) when princ = s ->
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LSend((if r < s then r ^ s else s ^ r), opt, t, compile env' forms funs princ g)
+   LSend(s, r, opt, t, ttype, compile env' forms funs princ g)
  | Send(s, r, opt, x, t, g) when princ = r ->
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
    
-   LRecv((if r < s then r ^ s else s ^ r), opt, PVar(x, ttype), t, compile env' forms funs princ g)
+   LRecv(s, r, opt, PVar(x, ttype), t, compile env' forms funs princ g)
  | Send(s, r, _, x, t, g) ->
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
@@ -370,3 +372,17 @@ let rec compile env forms funs princ gt =
  | Branch(_, _, _, _, _, g) ->
    compile env princ g*)
  | _ -> LLocalEnd
+
+and build_function_types = function
+ (f, (args_t, _, _, _)) -> (f, List.map (fun t -> show_dtype t) args_t)
+
+ let rec build_equation_params t1 t2 names_and_types = (* [(var name, type)...] *)
+  let rec inner t pos function_types =
+    begin
+    match (t, function_types) with
+    | (Var(_), []) -> []
+    | (Var(x), _) -> [(x, List.nth function_types pos)]
+    | (Func(name, args), _) -> List.flatten (List.mapi (fun i arg -> inner arg i (List.assoc name names_and_types)) args)
+    | _ -> []
+    end in
+  List.sort_uniq (fun (a,_) (c,_) -> compare a c) ((inner t1 0 [])@(inner t2 0 []))
