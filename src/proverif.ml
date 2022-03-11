@@ -9,9 +9,6 @@ let rec show_params = function
 and show_function = function
   (f, (args_t, ret, _, _)) -> "fun " ^ f ^ "(" ^ (show_params args_t) ^ "): " ^ (show_dtype ret)
 
-and build_function = function
-    (f, (args_t, _, _, _)) -> (f, List.map (fun t -> show_dtype t) args_t)
-
 and show_dtype t =
   match t with
   | DType(dtype) -> dtype
@@ -43,18 +40,11 @@ and show_term_list = function
 | [x] -> show_term x
 | (x::xs) -> show_term x ^ ", " ^ show_term_list xs
 
-let rec build_equation_params t pos function_types names_and_types = (* [(var name, type)...] *)
-  match (t, function_types) with
-  | (Var(_), []) -> []
-  | (Var(x), _) -> [(x, List.nth function_types pos)]
-  | (Func(name, args), _) -> List.flatten (List.mapi (fun i arg -> build_equation_params arg i (List.assoc name names_and_types) names_and_types) args)
-  | _ -> []
-
 and show_equation_params equation names_and_types = 
   match equation with
   | (t1, t2) -> String.concat ", " (
       List.map (fun (a,b) -> a ^ ": " ^ b) 
-        (List.sort_uniq (fun (a,_) (c,_) -> compare a c) (List.merge (fun _ _ -> 0) (build_equation_params t1 0 [] names_and_types) (build_equation_params t2 0 [] names_and_types))))
+        (build_equation_params t1 t2 names_and_types))
 
 and show_equation equation names_and_types =
   match equation with
@@ -67,10 +57,10 @@ and show_channel parties = function
   | AuthConf -> "c_" ^ parties ^ "_authconf"
 
 and show_local_type p = function
-    LSend(ident, opt, t, local_type) -> "\tout(" ^ show_channel ident opt ^ ", " ^ show_term t  ^");\n"^ show_local_type p local_type
+    LSend(sender, receiver, opt, t, _, local_type) -> "\tout(" ^ show_channel (get_channel_name sender receiver) opt ^ ", " ^ show_term t  ^");\n"^ show_local_type p local_type
+  | LRecv (sender, receiver, opt, pattern, term, local_type) -> "\tin(" ^ show_channel (get_channel_name sender receiver) opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type p local_type
   | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type p local_type
   | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type p local_type
-  | LRecv (ident, opt, pattern, term, local_type) -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type p local_type
   | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type p local_type
   | LChoose(lb, rb, penv, local_type) | LOffer(lb, rb, penv, local_type) -> Printf.sprintf "\t%sB%d(%s)." p 1 (String.concat ", " (List.map (fun (name, _) -> name) penv))
   | LBranchEnd | LLocalEnd -> "\t0."
@@ -119,10 +109,10 @@ let rec show_party_channels p acc suffix channels =
 let rec find_and_print_branch_functions bnr l p =
   let rec print_branch_function bnr local_type =
     match local_type with
-    | LSend(ident, opt, t, next) -> "\tout(" ^ show_channel ident opt ^ ", " ^ show_term t  ^");\n"^ print_branch_function bnr next
+    | LSend (sender, receiver, opt, t, _, next) -> "\tout(" ^ show_channel (get_channel_name sender receiver) opt ^ ", " ^ show_term t  ^");\n" ^ print_branch_function bnr next
+    | LRecv (sender, receiver, opt, pattern, term, next) -> "\tin(" ^ show_channel (get_channel_name sender receiver) opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ print_branch_function bnr next
     | LNew (ident, data_type, next) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ print_branch_function bnr next
     | LLet (ident, term, next) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ print_branch_function bnr next
-    | LRecv (ident, opt, pattern, term, next) -> "\tin(" ^ show_channel ident opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ print_branch_function bnr next
     | LEvent (ident, termlist, next) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ print_branch_function bnr next
     | LChoose(lb, rb, penv, next) | LOffer(lb, rb, penv, next) ->  
       (* print in, print left and right branch with call to next, remember to use penv *)
@@ -131,14 +121,14 @@ let rec find_and_print_branch_functions bnr l p =
   match l with
   | LChoose(lb, rb, penv, next) | LOffer(lb, rb, penv, next) ->
     Printf.sprintf "%s\n\nlet %sB%d(%s) =\n%s" (find_and_print_branch_functions (bnr+1) next p) p bnr (String.concat ", " (List.map (fun (name, dt) -> name ^ ": " ^ show_dtype dt) penv)) (print_branch_function bnr next)
-  | LSend(_, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
-  | LRecv (_, _, _, _, next) | LEvent (_, _, next) -> find_and_print_branch_functions bnr next p
+  | LSend(_, _, _, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
+  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_and_print_branch_functions bnr next p
   | LBranchEnd | LLocalEnd -> ""
 
 let proverif (pr:problem): unit =
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
   let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
-  let function_types = List.map (fun f -> build_function f) pr.functions in
+  let function_types = List.map (fun f -> build_function_types f) pr.functions in
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
   let locals = List.map (fun (p, _) -> (p, (compile env pr.formats pr.functions p pr.protocol))) pr.principals in

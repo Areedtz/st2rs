@@ -23,7 +23,7 @@ rule read =
   parse
   | white    { read lexbuf } (* skip blanks *)
   | newline  { next_line lexbuf; read lexbuf }
-
+  | "bitstring"  { raise (SyntaxError ("Type 'bitstring' is not allowed")) }
   | ','      { COMMA }
   | '('      { LEFT_PAR }
   | ')'      { RIGHT_PAR }
