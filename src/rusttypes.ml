@@ -113,26 +113,26 @@ and rust_equations function_types equations =
     else start ^ (List.fold_left (fun acc equation -> acc ^ equation) "" (List.mapi (fun i equation -> inner equation i) equations)) ^ "}"
 
 let output_principal_channels principal_locals =
-  let rec build_channel local_types s r = 
+  let rec build_channel local_types s r continue = 
     match local_types with
     | LSend(sender, receiver, _, _, dt, local_type) when sender = s && receiver = r ->
-      "Send<Repr<" ^ show_dtype dt ^ ">, " ^ build_channel local_type s r ^ ">"
+      "Send<Repr<" ^ show_dtype dt ^ ">, " ^ build_channel local_type s r continue ^ ">"
     | LRecv(sender, receiver, _, pattern, _, local_type) when sender = r && receiver = s ->
       begin
         match pattern with
-        | PVar(_, dt) -> "Recv<Repr<" ^ show_dtype dt ^ ">, " ^ build_channel local_type s r ^ ">"
+        | PVar(_, dt) -> "Recv<Repr<" ^ show_dtype dt ^ ">, " ^ build_channel local_type s r continue ^ ">"
         | _ -> raise (TypeError ("LRecv pattern should always be a PVar"))
       end
     | LChoose(sender, receiver, lb, rb, _, local_type) when sender = r && receiver = s ->
-      let continue_type = build_channel local_type s r in
-      "Choose<" ^ build_channel lb s r ^ continue_type ^ ", " ^ build_channel rb s r ^ continue_type ^ ">"
+      let continue_type = build_channel local_type s r continue in
+      "Choose<" ^ build_channel lb s r continue_type ^ ", " ^ build_channel rb s r continue_type ^ ">"
     | LOffer(sender, receiver, lb, rb, _, local_type) when sender = s && receiver = r ->
-      let continue_type = build_channel local_type s r in
-      "Offer<" ^ build_channel lb s r ^ continue_type ^ ", " ^ build_channel rb s r ^ continue_type ^ ">"
+      let continue_type = build_channel local_type s r continue in
+      "Offer<" ^ build_channel lb s r continue_type ^ ", " ^ build_channel rb s r continue_type ^ ">"
     | LSend(_, _, _, _, _, local_type) | LRecv(_, _, _, _, _, local_type) | LNew(_, _, local_type) |
         LLet(_, _, local_type) | LEvent(_, _, local_type) | LChoose(_, _, _, _, _, local_type) | LOffer(_, _, _, _, _, local_type) ->
-      build_channel local_type s r
-    | LBranchEnd -> ""
+      build_channel local_type s r continue
+    | LBranchEnd -> continue
     | LLocalEnd -> "Eps" in
   let rec inner local_types channels = 
     match local_types with
@@ -140,13 +140,13 @@ let output_principal_channels principal_locals =
       begin
         match List.assoc_opt (sender ^ receiver) channels with
         | Some(_) -> inner local_type channels
-        | None -> inner local_type ((sender ^ receiver, build_channel local_types sender receiver) :: channels)
+        | None -> inner local_type ((sender ^ receiver, build_channel local_types sender receiver "") :: channels)
       end
     | LRecv(sender, receiver, _, _, _, local_type) | LChoose(sender, receiver, _, _, _, local_type) ->
       begin
         match List.assoc_opt (receiver ^ sender) channels with
         | Some(_) -> inner local_type channels
-        | None -> inner local_type ((receiver ^ sender, build_channel local_types receiver sender) :: channels)
+        | None -> inner local_type ((receiver ^ sender, build_channel local_types receiver sender "") :: channels)
       end
     | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) ->
       inner local_type channels
