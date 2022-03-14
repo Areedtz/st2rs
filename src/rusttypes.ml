@@ -123,18 +123,26 @@ let output_principal_channels principal_locals =
         | PVar(_, dt) -> "Recv<Repr<" ^ show_dtype dt ^ ">, " ^ build_channel local_type s r ^ ">"
         | _ -> raise (TypeError ("LRecv pattern should always be a PVar"))
       end
-    | LSend(_, _, _, _, _, local_type) | LRecv(_, _, _, _, _, local_type) | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) ->
+    | LChoose(sender, receiver, lb, rb, _, local_type) when sender = r && receiver = s ->
+      let continue_type = build_channel local_type s r in
+      "Choose<" ^ build_channel lb s r ^ continue_type ^ ", " ^ build_channel rb s r ^ continue_type ^ ">"
+    | LOffer(sender, receiver, lb, rb, _, local_type) when sender = s && receiver = r ->
+      let continue_type = build_channel local_type s r in
+      "Offer<" ^ build_channel lb s r ^ continue_type ^ ", " ^ build_channel rb s r ^ continue_type ^ ">"
+    | LSend(_, _, _, _, _, local_type) | LRecv(_, _, _, _, _, local_type) | LNew(_, _, local_type) |
+        LLet(_, _, local_type) | LEvent(_, _, local_type) | LChoose(_, _, _, _, _, local_type) | LOffer(_, _, _, _, _, local_type) ->
       build_channel local_type s r
+    | LBranchEnd -> ""
     | LLocalEnd -> "Eps" in
   let rec inner local_types channels = 
     match local_types with
-    | LSend(sender, receiver, _, _, _, local_type) ->
+    | LSend(sender, receiver, _, _, _, local_type) | LOffer(sender, receiver, _, _, _, local_type) ->
       begin
         match List.assoc_opt (sender ^ receiver) channels with
         | Some(_) -> inner local_type channels
         | None -> inner local_type ((sender ^ receiver, build_channel local_types sender receiver) :: channels)
       end
-    | LRecv(sender, receiver, _, _, _, local_type) ->
+    | LRecv(sender, receiver, _, _, _, local_type) | LChoose(sender, receiver, _, _, _, local_type) ->
       begin
         match List.assoc_opt (receiver ^ sender) channels with
         | Some(_) -> inner local_type channels
@@ -181,7 +189,7 @@ let rust_output (pr:problem) : unit =
   Printf.printf "\n%s\n" (rust_equations function_types pr.equations);
   List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process (principal_channels p channel_pairs) pr.knowledge p (List.assoc p principal_locals))) pr.principals;
 
-  Printf.printf "fn main() {%s\n" "";
+  Printf.printf "\nfn main() {%s\n" "";
   Printf.printf "%s\n" (show_knowledge knowledge);
   List.iteri (fun i (s, r) -> if i mod 2 = 0 then () else Printf.printf "\tlet (%s, %s) = session_channel();\n" ("c_" ^ s ^ r) ("c_" ^ r ^ s)) channel_pairs;
   List.iter (fun (p, _) ->
