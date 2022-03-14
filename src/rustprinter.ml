@@ -6,6 +6,7 @@ use session_types::*;
 use std::{marker};
 use serde::{Serialize, Deserialize};
 use std::thread;
+use std::process;
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
@@ -67,8 +68,15 @@ and printSDeclExp = function
 (* Repr::from_repr *)
 and printBlock tab = function
       Empty -> "{ }"
-    | BStmts(lst) -> ("{\n" ^ tabulate tab) ^ String.concat (";\n" ^ tabulate tab) (List.map (fun s -> printStatements s) lst) ^ ("\n" ^ tabulate (tab - 1)  ^ "}")
-
+    | BStmts(lst) when List.length lst = 0 -> "{ }"
+    | BStmts(lst) -> 
+      let s = String.concat ("\n" ^ tabulate tab) (List.map (fun s -> 
+        match s with
+        | SBranch(branch) -> printBranch branch
+        | _ -> printStatements s ^ ";"
+      ) lst) in
+      ("{\n" ^ tabulate tab) ^ String.sub s 0 ((String.length s) - 1)
+       ^ ("\n" ^ tabulate (tab - 1)  ^ "}")
 
 and printType = function
     U8 -> "u8"
@@ -93,10 +101,15 @@ and printFunctions funs = String.concat "\n" (List.map (fun f-> printFunction f)
 and printIf st block =
   "if " ^ printExp st  ^ " " ^ printBlock 1 block
 
+and printStmtList lst = tabulate 1 ^ String.concat (";\n\t") (List.map (fun s -> printStatements s) lst)
+
 and printBranch = function
-  Branch(rid, lb, rb) -> 
+  Offer(rid, lb, rb) -> 
     let id = printrId rid in
-    Printf.sprintf "let %s = match %s.offer() {\n\t\tLeft(%s) => %s,\n\t\tRight(%s) => %s\n\t}" id id id (printBlock 3 lb) id (printBlock 3 rb)
+    Printf.sprintf "let %s = match %s.offer() {\n\t\tLeft(%s) => %s,\n\t\tRight(%s) => %s\n\t};" id id id (printBlock 3 lb) id (printBlock 3 rb)
+  | Choose(rid, lb, rb) ->
+    let id = printrId rid in
+    Printf.sprintf "// Need to make a choice on %s. Either %s.sel1() or %s.sel2()\n\t/*\n%s;\n\t*/\n\n\t/*\n%s;\n\t*/\n" id id id (printStmtList lb) (printStmtList rb)
 
 and printStatements = function
       SDeclExp(declExp) -> printSDeclExp declExp

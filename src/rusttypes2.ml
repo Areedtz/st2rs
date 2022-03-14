@@ -51,7 +51,8 @@ and ifStatement =
   | If of exp * block
 
 and branchStatement =
-  | Branch of rId * block * block
+  | Offer of rId * block * block
+  | Choose of rId * stmts list * stmts list
 
 and exps =
     Exps of exp list
