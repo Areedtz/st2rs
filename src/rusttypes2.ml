@@ -50,6 +50,9 @@ and exp =
 and ifStatement =
   | If of exp * block
 
+and branchStatement =
+  | Branch of rId * block * block
+
 and exps =
     Exps of exp list
 
@@ -86,4 +89,5 @@ and stmts =
   | SIfStatement of ifStatement
   | SFunction of rFunction
   | SStruct of rStruct
+  | SBranch of branchStatement
   | End

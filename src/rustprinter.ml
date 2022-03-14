@@ -30,6 +30,8 @@ fn close<E>(c: Chan<E, Eps>) { c.close() }
 
 let printHandWritten = handwritten
 
+let tabulate len = Printf.sprintf "%*s" (len*4) ""
+
 let rec printStructPattern = function
       StructPattern(rId, args) -> printrId rId ^ "(" ^ String.concat ", " (List.map (fun a -> printrId a) args) ^ ")"
 
@@ -63,9 +65,10 @@ and printSDeclExp = function
     DeclExp (rId, exp) -> "let " ^ printrId rId ^ " = " ^ printExp exp
   | PatrExp (s, exp) -> "let " ^ printStructPattern s ^ " = " ^ printExp exp
 (* Repr::from_repr *)
-and printBlock = function
-      Empty -> "{}"
-    | BStmts(lst) -> ("{\n\t") ^ String.concat (";\n\t") (List.map (fun s -> printStatements s) lst) ^ "\n}"
+and printBlock tab = function
+      Empty -> "{ }"
+    | BStmts(lst) -> ("{\n" ^ tabulate tab) ^ String.concat (";\n" ^ tabulate tab) (List.map (fun s -> printStatements s) lst) ^ ("\n" ^ tabulate (tab - 1)  ^ "}")
+
 
 and printType = function
     U8 -> "u8"
@@ -81,19 +84,25 @@ and printTypedIds t =
   String.concat ", " (List.map (fun typ -> printTypedId typ) t)
 
 and printFunction = function
-    Function(id, TypedIDs(args), Empty, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ")"^  " " ^ printBlock block
-  | Function(id, TypedIDs(args), typ, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ") -> "^ printType typ ^ " " ^ printBlock block
-  | Function(id, args, Empty, block) -> "fn " ^ printrId id ^ "(" ^ ") " ^ printBlock block
+    Function(id, TypedIDs(args), Empty, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ")"^  " " ^ printBlock 1 block
+  | Function(id, TypedIDs(args), typ, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ") -> "^ printType typ ^ " " ^ printBlock 1 block
+  | Function(id, args, Empty, block) -> "fn " ^ printrId id ^ "(" ^ ") " ^ printBlock 1 block
 
 and printFunctions funs = String.concat "\n" (List.map (fun f-> printFunction f) funs)
 
 and printIf st block =
-  "if " ^ printExp st  ^ " " ^ printBlock block
+  "if " ^ printExp st  ^ " " ^ printBlock 1 block
+
+and printBranch = function
+  Branch(rid, lb, rb) -> 
+    let id = printrId rid in
+    Printf.sprintf "let %s = match %s.offer() {\n\t\tLeft(%s) => %s,\n\t\tRight(%s) => %s\n\t}" id id id (printBlock 3 lb) id (printBlock 3 rb)
 
 and printStatements = function
       SDeclExp(declExp) -> printSDeclExp declExp
-    | SBlock(block) -> printBlock block
+    | SBlock(block) -> printBlock 1 block
     | SExp(exp) -> printExp exp
     | SFunction(rFunction) -> printFunction rFunction
     | SIfStatement(If(st, block)) -> printIf st block
+    | SBranch(branch) -> printBranch branch
     | End -> ""

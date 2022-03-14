@@ -77,9 +77,9 @@ and rust_a_types type_list =
     
 
 and channels acc = function
-  Send(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
+  Send(sender, receiver, _, _, _, g) | Branch(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
     channels acc g
-  | Send(sender, receiver, _, _, _, g) ->
+  | Send(sender, receiver, _, _, _, g) | Branch(sender, receiver, _, _, _, g) ->
     channels ([(receiver, sender);(sender, receiver)]@acc) g
   | Compute(_, _, g) -> channels acc g
   | DefGlobal(_, _, g, g') -> channels (channels acc g) g'

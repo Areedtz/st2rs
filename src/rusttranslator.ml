@@ -97,7 +97,13 @@ and process princ channels = function
     let ident = get_channel_name princ sender receiver in
     SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction ("recv") (Id(ID("c_" ^ ident)))))::process princ channels local_type
   | LEvent (ident, term, local_type) -> process princ channels local_type
+  | LChoose(s, r, lb, rb, penv, local_type) -> [End]
+  | LOffer(sender, receiver, lb, rb, penv, local_type) -> 
+    let ident = get_channel_name princ sender receiver in
+    let branch_channel = List.filter (fun (s, r) -> sender = s && receiver = r) channels in
+    SBranch(Branch(ID("c_" ^ ident), BStmts(process princ branch_channel lb@[SExp(Id(ID("c_" ^ ident)))]), BStmts(process princ branch_channel rb@[SExp(Id(ID("c_" ^ ident)))])))::process princ channels local_type
   | LLocalEnd -> close_channels channels
+  | LBranchEnd -> []
   | _ -> [End]
 
 and typedIds t =
