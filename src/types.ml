@@ -325,21 +325,29 @@ let dt_unpack dt =
  | DTType(types) -> types
  | _ -> [dt]
 
-let rec compile env forms funs princ gt =
+let check_event_types env evs forms funs name terms = 
+  let event_types = 
+    match List.assoc_opt name evs with
+    | Some(types) -> types
+    | None -> raise (SyntaxError(Printf.sprintf "Event %s was not defined before being used" name)) in
+  if List.length event_types <> List.length terms then raise (SyntaxError(Printf.sprintf "Too many params passed to event %s" name));
+  List.iteri (fun i t -> if List.nth event_types i <> get_term_type env forms funs t then raise (TypeError(Printf.sprintf "Term %s doesn't match type %s" (show_term t) (show_dtype (List.nth event_types i))))) terms
+
+let rec compile env forms funs evs princ gt =
  match gt with
  | Send(s, r, opt, x, t, g) when princ = s ->
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LSend(s, r, opt, t, ttype, compile env' forms funs princ g)
+   LSend(s, r, opt, t, ttype, compile env' forms funs evs princ g)
  | Send(s, r, opt, x, t, g) when princ = r ->
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
    
-   LRecv(s, r, opt, PVar(x, ttype), t, compile env' forms funs princ g)
+   LRecv(s, r, opt, PVar(x, ttype), t, compile env' forms funs evs princ g)
  | Send(s, r, _, x, t, g) ->
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   compile env' forms funs princ g
+   compile env' forms funs evs princ g
  | Compute(p, letb, g) ->
    let rec compile_letb inner_env letb =
      match letb with
@@ -371,16 +379,21 @@ let rec compile env forms funs princ gt =
          LLet(pattern, term, compile_letb inner_env' next)
        else 
          compile_letb inner_env' next
-     | LetEnd -> compile inner_env forms funs princ g in
+     | Event(name, terms, next) ->
+       check_event_types (get_penv inner_env p) evs forms funs name terms;
+       if p = princ then
+         LEvent(name, terms, compile_letb inner_env next)
+       else compile_letb inner_env next
+     | LetEnd -> compile inner_env forms funs evs princ g in
    compile_letb env letb
  | Branch(s, r, _, lb, rb, g) when princ = s ->
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(s, r, compile env' forms funs princ lb, compile env' forms funs princ rb, List.assoc princ env', compile env forms funs princ g)
+   LOffer(s, r, compile env' forms funs evs princ lb, compile env' forms funs evs princ rb, List.assoc princ env', compile env forms funs evs princ g)
  | Branch(s, r, _, lb, rb, g) when princ = r ->
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(s, r, compile env' forms funs princ lb, compile env' forms funs princ rb, List.assoc princ env', compile env forms funs princ g)
+   LChoose(s, r, compile env' forms funs evs princ lb, compile env' forms funs evs princ rb, List.assoc princ env', compile env forms funs evs princ g)
  | Branch(_, _, _, _, _, g) ->
-   compile env forms funs princ g
+   compile env forms funs evs princ g
  | BranchEnd -> LBranchEnd
  | _ -> LLocalEnd
 
