@@ -64,23 +64,17 @@ let rec show_party_channels p acc suffix channels =
   | [x] -> acc
   | (_::xs) -> show_party_channels p acc suffix xs
 
-and get_branch_call call = function
-  LSend(_, _, _, _, _, local_type) | LRecv (_, _, _, _, _, local_type) | LNew (_, _, local_type) | LLet (_, _, local_type) |
-    LEvent(_, _, local_type) | LChoose(_, _, _, _, _, local_type) | LOffer(_, _, _, _, _, local_type) -> get_branch_call call local_type
-  | LLocalEnd -> ""
-  | LBranchEnd -> call
-
-and show_local_type p bnr channels = function
-    LSend(sender, receiver, opt, t, _, local_type) -> "\tout(" ^ show_channel (get_channel_name sender receiver) opt ^ ", " ^ show_term t  ^");\n"^ show_local_type p bnr channels local_type
-  | LRecv (sender, receiver, opt, pattern, term, local_type) -> "\tin(" ^ show_channel (get_channel_name sender receiver) opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type p bnr channels local_type
-  | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type p bnr channels local_type
-  | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type p bnr channels local_type
-  | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type p bnr channels local_type
+and show_local_type p bnr channels continue = function
+    LSend(sender, receiver, opt, t, _, local_type) -> "\tout(" ^ show_channel (get_channel_name sender receiver) opt ^ ", " ^ show_term t  ^");\n"^ show_local_type p bnr channels continue local_type
+  | LRecv (sender, receiver, opt, pattern, term, local_type) -> "\tin(" ^ show_channel (get_channel_name sender receiver) opt ^ ", " ^ show_pattern pattern ^ ");\n" ^ show_local_type p bnr channels continue local_type
+  | LNew (ident, data_type, local_type) -> "\tnew " ^ ident ^ ": " ^ show_dtype data_type ^ ";\n" ^ show_local_type p bnr channels continue local_type
+  | LLet (ident, term, local_type) -> "\tlet " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type p bnr channels continue local_type
+  | LEvent (ident, termlist, local_type) -> "\tevent " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type p bnr channels continue local_type
   | LChoose(_, _, lb, rb, penv, local_type) | LOffer(_, _, lb, rb, penv, local_type) -> 
       let branch_call = Printf.sprintf "%sB%d(%s)" p (bnr+1) (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) penv))) in
-      Printf.sprintf "\tin(c, branchchoice: bitstring);\n\t(let Left(leftbr) = branchchoice in " ^ show_local_type p bnr channels lb ^ get_branch_call branch_call lb ^ ") |\n\t(let Right(rightbr) = branchchoice in " ^ show_local_type p bnr channels rb ^ get_branch_call branch_call rb ^ ")"
+      Printf.sprintf "\tin(c, branchchoice: bitstring);\n\t(let Left(leftbr) = branchchoice in " ^ show_local_type p bnr channels branch_call lb ^ ") |\n\t(let Right(rightbr) = branchchoice in " ^ show_local_type p bnr channels branch_call rb ^ ")"
   | LLocalEnd -> "\t0"
-  | LBranchEnd -> ""
+  | LBranchEnd -> continue
 
 and show_format = function
   (name, types) -> "fun " ^ name ^ "(" ^ (String.concat ", " (List.map (fun t -> show_dtype t) types)) ^ "): bitstring [data]."
@@ -118,7 +112,7 @@ let rec build_channels acc = function
 let rec find_and_print_branch_functions bnr channels l p =
   match l with
   | LChoose(_, _, lb, rb, penv, next) | LOffer(_, _, lb, rb, penv, next) ->
-    Printf.sprintf "%slet %sB%d(%s) =\n%s.\n\n" (find_and_print_branch_functions (bnr+1) channels next p) p bnr (String.concat ", " ((show_party_channels p [] ": channel" channels)@(List.map (fun (name, dt) -> name ^ ": " ^ show_dtype dt) penv))) (show_local_type p bnr channels next)
+    Printf.sprintf "%slet %sB%d(%s) =\n%s.\n\n" (find_and_print_branch_functions (bnr+1) channels next p) p bnr (String.concat ", " ((show_party_channels p [] ": channel" channels)@(List.map (fun (name, dt) -> name ^ ": " ^ show_dtype dt) penv))) (show_local_type p bnr channels "" next)
   | LSend(_, _, _, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
   | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_and_print_branch_functions bnr channels next p
   | LBranchEnd | LLocalEnd -> ""
@@ -146,5 +140,5 @@ let proverif (pr:problem): unit =
   Printf.printf "%s\n" "";
   List.iter (fun (p, plocals) ->
     Printf.printf "%s" (find_and_print_branch_functions 1 channels plocals p)) locals;
-  List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s.\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type p 0 channels (List.assoc p locals))) pr.principals;
+  List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s.\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type p 0 channels "" (List.assoc p locals))) pr.principals;
   Printf.printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))
