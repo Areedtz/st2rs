@@ -56,20 +56,24 @@ type channel_option =
 (* Global types: p -> q *)
 type global_type =
     Send of principal * principal * channel_option * ident * term * global_type
-  | Branch of principal * principal * channel_option * term * (pattern * global_type) list
+  | Branch of principal * principal * channel_option * global_type * global_type * global_type
   | Compute of principal * let_bind * global_type
   | DefGlobal of ident * ((ident * data_type) * principal) list * global_type * global_type
   | CallGlobal of ident * term list
   | GlobalEnd
+  | BranchEnd
 
 (* Local Type *)
 type local_type =
-    LSend of principal * principal * channel_option * term * data_type * local_type
+  LSend of principal * principal * channel_option * term * data_type * local_type
   | LRecv of principal * principal * channel_option * pattern * term * local_type
+  | LOffer of principal * principal * local_type * local_type * (ident * data_type) list * local_type
+  | LChoose of principal * principal * local_type * local_type * (ident * data_type) list * local_type
   | LNew of ident * data_type * local_type
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
   | LLocalEnd
+  | LBranchEnd
 
 type problem = { name: ident;
                  principals: (principal * bool) list;
@@ -144,8 +148,6 @@ and show_channel_option = function
 (* Show global types *)
 and show_global_type = function
   Send(p, q, opt, x, t, g) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ "\n" ^ show_global_type g
-| Branch(p, q, opt, t, branches) ->
-  p ^ show_channel_option opt ^ q ^ ": match " ^ show_term t ^ " with {\n" ^ show_branches branches ^ "}\n"
 | Compute(p, letb, g) ->
   p ^ " {\n" ^ show_let_bind letb ^ "}\n" ^ show_global_type g
 | DefGlobal(name, params, g, g') ->
@@ -156,8 +158,6 @@ and show_global_type = function
 
 and show_global_type_nr = function
   Send(p, q, opt, x, t, g) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ " ..."
-| Branch(p, q, opt, t, branches) ->
-  p ^ show_channel_option opt ^ q ^ ": match " ^ show_term t ^ " with {\n" ^ show_branches_nr branches ^ "}\n"
 | Compute(p, letb, g) ->
   p ^ " {\n" ^ show_let_bind letb ^ "}...\n"
 | DefGlobal(name, params, g, g') ->
@@ -363,14 +363,15 @@ let rec compile env forms funs princ gt =
          compile_letb inner_env' next
      | LetEnd -> compile inner_env forms funs princ g in
    compile_letb env letb
- (*| Branch(s, r, opt, lb, rb, g) when princ = s ->
+ | Branch(s, r, _, lb, rb, g) when princ = s ->
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(compile env' princ lb, compile env' princ rb, compile env princ g)
- | Branch(s, r, opt, lb, rb, g) when princ = r ->
+   LOffer(s, r, compile env' forms funs princ lb, compile env' forms funs princ rb, List.assoc princ env', compile env forms funs princ g)
+ | Branch(s, r, _, lb, rb, g) when princ = r ->
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(compile env' princ lb, compile env' princ rb, compile env princ g)
+   LChoose(s, r, compile env' forms funs princ lb, compile env' forms funs princ rb, List.assoc princ env', compile env forms funs princ g)
  | Branch(_, _, _, _, _, g) ->
-   compile env princ g*)
+   compile env forms funs princ g
+ | BranchEnd -> LBranchEnd
  | _ -> LLocalEnd
 
 and build_function_types = function

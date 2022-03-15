@@ -37,8 +37,6 @@ rule read =
   | '&'      { AND }
   | '|'      { OR }
   | '~'      { NOT }
-  | '/'      { DIV }
-  | '+'      { PLUS }
   | ':'      { COLON }
   | ';'      { SEMI }
   | '@'      { AT }
@@ -49,10 +47,10 @@ rule read =
   | "event"  { EVENT }
   | "in"     { IN }
   | "end"    { END }
-  | "match"  { MATCH }
-  | "with"   { WITH }
-  | "data"   { DATA }
   | "if"     { IF }
+  | "Left"   { LEFT }
+  | "Right"  { RIGHT }
+  | "branch_end" { BRANCH_END }
   | "dishonest"  { DISHONEST }
   | "Problem"    { PROBLEM }
   | "Principals" { PRINCIPALS }
@@ -69,7 +67,6 @@ rule read =
 
 
   | id       { let s = Lexing.lexeme lexbuf in ID(s) }
-  | num      { let s = Lexing.lexeme lexbuf in NUM(int_of_string s) }
   | _ { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
   | eof      { EOF }
 
