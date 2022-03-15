@@ -58,15 +58,24 @@ let rec show_query = function
   ReachQuery(event) -> show_event event
   | CorrQuery(event, next) -> "(" ^ show_event event ^ " ==> " ^ show_query next ^ ")"
 
-let rec build_query_params query event_names_and_types function_names_and_types = (* [(var name, type)...] *)
+let rec build_query_params query funcs event_names_and_types function_names_and_types = (* [(var name, type)...] *)
   let rec inner e t pos function_types =
-    begin
     match (t, function_types) with
     | (Var(x), []) -> [(x, List.nth (List.assoc e event_names_and_types) pos)]
     | (Var(x), _) -> [(x, List.nth function_types pos)]
-    | (Func(name, args), _) -> List.flatten (List.mapi (fun i arg -> inner e arg i (List.assoc name function_names_and_types)) args)
-    | _ -> []
-    end in
+    | (Func(name, args), []) -> 
+      let function_type = 
+        begin
+          match List.assoc_opt name funcs with
+          | Some(_, dt, _, _) -> show_dtype dt
+          | None -> raise (SyntaxError(Printf.sprintf "Function %s is not defined" name))
+        end in
+      let event_param_type = List.nth (List.assoc e event_names_and_types) pos in
+      if function_type <> event_param_type then raise (TypeError(Printf.sprintf "Function type %s doesn't match type %s needed for event" function_type event_param_type));
+      List.flatten (List.mapi (fun i arg -> inner e arg i (List.assoc name function_names_and_types)) args)
+    | (Func(name, args), _) -> 
+      List.flatten (List.mapi (fun i arg -> inner e arg i (List.assoc name function_names_and_types)) args)
+    | _ -> [] in
   let params = 
     match query with
     | ReachQuery(event) -> 
@@ -79,20 +88,20 @@ let rec build_query_params query event_names_and_types function_names_and_types 
         match event with
         | NonInjEvent(e, args) | InjEvent(e, args) -> List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
       end
-      @ build_query_params next event_names_and_types function_names_and_types in
+      @ build_query_params next funcs event_names_and_types function_names_and_types in
   List.sort_uniq (fun (a, _) (c, _) -> compare a c) params
 
-and show_query_params query event_names_and_types function_names_and_types =
-  let params = build_query_params query event_names_and_types function_names_and_types in
+and show_query_params query funcs event_names_and_types function_names_and_types =
+  let params = build_query_params query funcs event_names_and_types function_names_and_types in
   if List.length params > 0 then
     String.concat ", " (
         List.map (fun (a,b) -> a ^ ": " ^ b) params) ^ ";\n\t"
   else ""
 
-and show_query_with_params query event_names_and_types function_names_and_types =
+and show_query_with_params query funcs event_names_and_types function_names_and_types =
   match query with
-  | ReachQuery(event) -> "query " ^ (show_query_params query event_names_and_types function_names_and_types) ^ show_event event
-  | CorrQuery(event, next) -> "query " ^ (show_query_params query event_names_and_types function_names_and_types) ^ show_query query
+  | ReachQuery(event) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_event event
+  | CorrQuery(event, next) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_query query
 
 and show_channel parties = function
   Public -> "c"
@@ -195,7 +204,7 @@ let proverif (pr:problem): unit =
     Printf.printf "%s.\n" (show_event_def e)) pr.events;
   if List.length pr.events > 0 then Printf.printf "%s\n" "";
   List.iter (fun q -> 
-    Printf.printf "%s.\n" (show_query_with_params q event_types function_types)) pr.queries;
+    Printf.printf "%s.\n" (show_query_with_params q pr.functions event_types function_types)) pr.queries;
   if List.length pr.queries > 0 then Printf.printf "%s\n" "";
   List.iter (fun (p, plocals) ->
     Printf.printf "%s" (find_and_print_branch_functions 1 channels plocals p)) locals;
