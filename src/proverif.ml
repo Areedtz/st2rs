@@ -84,13 +84,15 @@ let rec build_query_params query event_names_and_types function_names_and_types 
 
 and show_query_params query event_names_and_types function_names_and_types =
   let params = build_query_params query event_names_and_types function_names_and_types in
-  String.concat ", " (
-      List.map (fun (a,b) -> a ^ ": " ^ b) params)
+  if List.length params > 0 then
+    String.concat ", " (
+        List.map (fun (a,b) -> a ^ ": " ^ b) params) ^ ";\n\t"
+  else ""
 
 and show_query_with_params query event_names_and_types function_names_and_types =
   match query with
-  | ReachQuery(event) -> "query " ^ (show_query_params query event_names_and_types function_names_and_types) ^ ";\n\t" ^ show_event event
-  | CorrQuery(event, next) -> "query " ^ (show_query_params query event_names_and_types function_names_and_types) ^ ";\n\t" ^ show_query query
+  | ReachQuery(event) -> "query " ^ (show_query_params query event_names_and_types function_names_and_types) ^ show_event event
+  | CorrQuery(event, next) -> "query " ^ (show_query_params query event_names_and_types function_names_and_types) ^ show_query query
 
 and show_channel parties = function
   Public -> "c"
