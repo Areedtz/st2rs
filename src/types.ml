@@ -53,6 +53,14 @@ type channel_option =
   | Conf
   | AuthConf
 
+type event =
+  NonInjEvent of ident * term list
+  | InjEvent of ident * term list
+  
+type query =
+  ReachQuery of event
+  | CorrQuery of event * query
+
 (* Global types: p -> q *)
 type global_type =
     Send of principal * principal * channel_option * ident * term * global_type
@@ -82,6 +90,8 @@ type problem = { name: ident;
                  functions: (ident * (data_type list * data_type * bool * data_type list)) list;
                  equations: (term * term) list;
                  formats: (ident * (data_type list)) list;
+                 events: (ident * data_type list) list;
+                 queries: query list;
                  protocol: global_type }
 
 type letb = LetB of pattern * term

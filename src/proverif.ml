@@ -50,6 +50,48 @@ and show_equation equation names_and_types =
   match equation with
   | (t1, t2) -> "equation forall " ^ (show_equation_params equation names_and_types) ^ ";\n\t" ^ (show_term t1) ^ " = " ^ (show_term t2)
 
+and show_event = function
+  NonInjEvent(id, args) -> "event(" ^ id ^ "(" ^ show_term_list args ^ "))"
+  | InjEvent(id, args) -> "inj-event(" ^ id ^ "(" ^ show_term_list args ^ "))"
+
+let rec show_query = function
+  ReachQuery(event) -> show_event event
+  | CorrQuery(event, next) -> "(" ^ show_event event ^ " ==> " ^ show_query next ^ ")"
+
+let rec build_query_params query event_names_and_types function_names_and_types = (* [(var name, type)...] *)
+  let rec inner e t pos function_types =
+    begin
+    match (t, function_types) with
+    | (Var(x), []) -> [(x, List.nth (List.assoc e event_names_and_types) pos)]
+    | (Var(x), _) -> [(x, List.nth function_types pos)]
+    | (Func(name, args), _) -> List.flatten (List.mapi (fun i arg -> inner e arg i (List.assoc name function_names_and_types)) args)
+    | _ -> []
+    end in
+  let params = 
+    match query with
+    | ReachQuery(event) -> 
+      begin
+        match event with
+        | NonInjEvent(e, args) | InjEvent(e, args) -> List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
+      end
+    | CorrQuery(event, next) ->
+      begin
+        match event with
+        | NonInjEvent(e, args) | InjEvent(e, args) -> List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
+      end
+      @ build_query_params next event_names_and_types function_names_and_types in
+  List.sort_uniq (fun (a, _) (c, _) -> compare a c) params
+
+and show_query_params query event_names_and_types function_names_and_types =
+  let params = build_query_params query event_names_and_types function_names_and_types in
+  String.concat ", " (
+      List.map (fun (a,b) -> a ^ ": " ^ b) params)
+
+and show_query_with_params query event_names_and_types function_names_and_types =
+  match query with
+  | ReachQuery(event) -> "query " ^ (show_query_params query event_names_and_types function_names_and_types) ^ ";\n\t" ^ show_event event
+  | CorrQuery(event, next) -> "query " ^ (show_query_params query event_names_and_types function_names_and_types) ^ ";\n\t" ^ show_query query
+
 and show_channel parties = function
   Public -> "c"
   | Auth -> "c_" ^ parties ^ "_auth"
@@ -99,6 +141,9 @@ knowledge ->
 and show_party_params = function
   params -> List.map (fun (name, dtype, _) -> name ^ ": " ^ show_dtype dtype) params
 
+and show_event_def = function
+  (name, dtypes) -> "event " ^ name ^ "(" ^ String.concat ", " (List.map (fun t -> show_dtype t) dtypes) ^ ")"
+
 and instantiate_party_process_vars party = function
   knowledge -> List.map (fun (i, _, _) -> i) (List.assoc party knowledge)
 
@@ -110,6 +155,9 @@ let rec build_channels acc = function
   | Send(_, _, _, _, _, g) | Branch(_, _, _, _, _, g) | Compute(_, _, g) -> build_channels acc g
   | DefGlobal(_, _, g, g') -> build_channels (build_channels acc g) g'
   | _ -> List.sort_uniq (fun (_, a) (_, b) -> compare a b) acc
+
+and build_event_types = function
+  (e, args) -> (e, List.map (fun t -> show_dtype t) args)
 
 let rec find_and_print_branch_functions bnr channels l p =
   match l with
@@ -123,6 +171,7 @@ let proverif (pr:problem): unit =
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
   let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
   let function_types = List.map (fun f -> build_function_types f) pr.functions in
+  let event_types = List.map (fun e -> build_event_types e) pr.events in
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
   let locals = List.map (fun (p, _) -> (p, (compile env pr.formats pr.functions p pr.protocol))) pr.principals in
@@ -140,6 +189,12 @@ let proverif (pr:problem): unit =
   List.iter (fun e -> 
     Printf.printf "%s.\n" (show_equation e function_types)) pr.equations;
   Printf.printf "%s\n" "";
+  List.iter (fun e -> 
+    Printf.printf "%s.\n" (show_event_def e)) pr.events;
+  if List.length pr.events > 0 then Printf.printf "%s\n" "";
+  List.iter (fun q -> 
+    Printf.printf "%s.\n" (show_query_with_params q event_types function_types)) pr.queries;
+  if List.length pr.queries > 0 then Printf.printf "%s\n" "";
   List.iter (fun (p, plocals) ->
     Printf.printf "%s" (find_and_print_branch_functions 1 channels plocals p)) locals;
   List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s.\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type p 0 channels "\t" "" (List.assoc p locals))) pr.principals;
