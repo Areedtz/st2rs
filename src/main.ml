@@ -1,7 +1,7 @@
 open Lexer
 open Lexing
 open Rusttypes
-open Localtypes
+open Types
 open Proverif
 
 let fprintf = Printf.fprintf
@@ -22,7 +22,7 @@ let parse_with_error lexbuf =
 
 let rec print_errors = function
   | (msg, g)::err ->
-    fprintf stderr "%s in %s\n" msg (Types.show_global_type_nr g);
+    fprintf stderr "%s in %s\n" msg (show_global_type_nr g);
     print_errors err
   | [] -> ()
 

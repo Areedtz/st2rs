@@ -125,7 +125,8 @@ and show_term_list = function
   | (x::xs) -> show_term x ^ ", " ^ show_term_list xs
 
 and show_pattern = function
-    PVar(x, _) -> x
+    PVar(x, None) -> x
+  | PVar(x, dt) -> x ^ ": " ^ show_dtype dt
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
   | PMatch(t) -> "=" ^ show_term t
@@ -184,16 +185,6 @@ and show_global_type_nr = function
 | Branch(p, q, opt, _, _, _) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:...\n\tRight:...\n}\n"
 | BranchEnd -> "branch_end\n"
 | GlobalEnd -> "end\n"
-
-and show_branches = function
-  [] -> ""
-| ((p, g)::branches) ->
-  show_pattern p ^ ": " ^ show_global_type g ^ "\n" ^ show_branches branches
-
-and show_branches_nr = function
-  [] -> ""
-| ((p, g)::branches) ->
-  show_pattern p ^ ": ...\n" ^ show_branches_nr branches
 
 and show_params = function
   [] -> ""

@@ -1,5 +1,4 @@
 open Types
-open Localtypes
 
 let rec show_params = function
   [] -> ""
@@ -22,6 +21,11 @@ and show_pattern = function
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "(" ^ show_pattern_list args ^ ")"
   | PMatch(t) -> "=" ^ show_term t
+
+and show_pattern_list = function
+    [] -> ""
+  | [x] -> show_pattern x
+  | (x::xs) -> show_pattern x ^ ", " ^ show_pattern_list xs
 
 let rec show_term = function
     Var(x) -> x

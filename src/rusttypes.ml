@@ -1,5 +1,4 @@
 open Types
-open Localtypes
 open Rusttranslator
 
 let abstract_type = "T"
