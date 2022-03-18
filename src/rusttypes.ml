@@ -141,13 +141,12 @@ let rust_output (pr:problem) : unit =
       printf "%s\n" (output_principal_channels (List.assoc p principal_locals))) pr.principals;
   let abstract_types = List.filter_map (function DAType(s1,s2) -> Some(DAType(s1,s2)) | _ -> None) pr.types in
   let concrete_types = List.filter_map (function DType(s1) -> Some(DType(s1)) | _ -> None) pr.types in
-  printf "\n%s\n" (rust_a_types abstract_types);
-  printf "\n%s\n" (rust_types concrete_types);
+  if List.length abstract_types > 0 then printf "\n%s\n" (rust_a_types abstract_types);
+  printf "%s\n" (rust_types concrete_types);
   printf "\n%s\n" (rust_formats pr.formats);
   printf "\n%s\n" (rust_functions pr.functions concrete_types);
   printf "\n%s\n" (rust_equations function_types pr.equations);
   List.iter (fun (p, b) -> printf "\n%s\n" (rust_process (principal_channels p channel_pairs) pr.knowledge p (List.assoc p principal_locals))) pr.principals;
-
   printf "\nfn main() {%s\n" "";
   printf "%s\n" (show_knowledge knowledge);
   List.iteri (fun i (s, r) -> if i mod 2 = 0 then () else printf "\tlet (%s, %s) = session_channel();\n" ("c_" ^ s ^ r) ("c_" ^ r ^ s)) channel_pairs;
