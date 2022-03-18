@@ -8,7 +8,6 @@ let next_var =
     private_counter := !private_counter + 1;
     "v"^string_of_int(!private_counter)
 
-let indent = "    "
 let abstract_traits = ":Serialize + DeserializeOwned"
 
 let rec translateTerm t =
@@ -19,7 +18,10 @@ let rec translateTerm t =
   | Tuple(args) -> Id(ID("(" ^ printExp (translateArgs args) ^ ")"))
   | Eq(l, r) -> Id(ID(printExp (translateTerm l) ^ " == " ^ printExp (translateTerm r)))
   | And(l, r) -> Id(ID(printExp (translateTerm l) ^ " && " ^ printExp (translateTerm r)))
+  | Or(l, r) -> Id(ID(printExp (translateTerm l) ^ " || " ^ printExp (translateTerm r)))
+  | Not(t) -> Id(ID("!" ^ printExp (translateTerm t)))
   | If(cond, t1, t2) -> Id(ID("if " ^ printExp (translateTerm cond) ^ " {\n\t\t" ^ printExp (translateTerm t1) ^ "\n\t} else {\n\t\t" ^ printExp (translateTerm t2) ^ "\n\t}"))
+  | Null -> Id(ID(""))
 
 and combineConditions cons =
   let rec inner cons acc =
@@ -30,7 +32,6 @@ and combineConditions cons =
       snd(t)@inner tail acc
   in
   inner cons []
-
 
 and translatePattern pat (conditions : (term * term) list) =
   match pat with
@@ -62,6 +63,7 @@ and fresh name data_type  =
 and equals_condition_patterns = function
     (t1, t2)::[] -> OExp(translateTerm t1, Equals, translateTerm t2)
   | (t1, t2)::tail -> OExp(OExp(translateTerm t1, Equals, translateTerm t2),And, equals_condition_patterns tail)
+  | [] -> raise (SyntaxError ("Conditions cannot be empty"))
   
 and close_channels channels = List.map (fun (s, r) -> SExp(toFunction "close" (Id(ID("c_" ^ s ^ r))))) channels
 
@@ -77,7 +79,6 @@ and show_branch_return call stmts =
         | SExp(Id(ID(id))) when id = "process::exit(1)" -> []
         | _ -> [call]
       end
-
 
 and process princ channels is_branch = function
     LSend(sender, receiver, opt, t, _, local_type) ->
@@ -114,7 +115,6 @@ and process princ channels is_branch = function
     let sel1 = SDeclExp(DeclExp((ID("c_" ^ ident)), Id(ID("c_" ^ ident ^ ".sel1()")))) in
     let sel2 = SDeclExp(DeclExp((ID("c_" ^ ident)), Id(ID("c_" ^ ident ^ ".sel2()")))) in
     SBranch(Choose(ID("c_" ^ ident), sel1::process princ channels true lb, sel2::process princ channels true rb))::process princ channels is_branch local_type
-    
   | LOffer(sender, receiver, lb, rb, penv, local_type) -> 
     let ident = get_channel_name princ sender receiver in
     let branch_channel = List.filter (fun (s, r) -> sender = s && receiver = r) channels in
@@ -146,6 +146,10 @@ and func f =
 and functions (f : (ident * (data_type list * data_type * bool * data_type list)) list) =
   List.map (fun f -> func f) f
 
+and rust_functions (f : (ident * (data_type list * data_type * bool * data_type list)) list) t =
+  let freshTypeFunctions = List.map (fun (typ) -> (freshType typ, ([], typ, false, []))) t in
+  printFunctions (functions (f @ freshTypeFunctions))
+
 and format f =
   match f with
   | (name, data_types) -> Struct(ID(name), RTypes(List.map (fun d-> Custom(show_dtype d)) data_types))
@@ -158,10 +162,6 @@ and rust_formats form =
 
 and rust_handwritten =
   printHandWritten
-
-and rust_functions (f : (ident * (data_type list * data_type * bool * data_type list)) list) t =
-  let freshTypeFunctions = List.map (fun (typ) -> (freshType typ, ([], typ, false, []))) t in
-  printFunctions (functions (f @ freshTypeFunctions))
 
 let rec translateKnowledge principal knowledge acc =
   match knowledge with
@@ -179,4 +179,4 @@ let rec translateChannels principal channels acc =
       translateChannels principal c (TypedID(ID("c_" ^ s ^ r), Custom("Chan<(), " ^ s ^ r ^ ">")) :: acc)
     else translateChannels principal c acc
 
-let rust_process channels knowledge principal proc = (printStatements (SFunction(Function(ID(String.lowercase principal),TypedIDs(translateChannels principal channels [] @ translateKnowledge principal knowledge []), Empty,(BStmts(process principal channels false proc))))))
+let rust_process channels knowledge principal proc = (printStatements (SFunction(Function(ID(String.lowercase_ascii principal),TypedIDs(translateChannels principal channels [] @ translateKnowledge principal knowledge []), Empty,(BStmts(process principal channels false proc))))))

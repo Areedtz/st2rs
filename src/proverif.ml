@@ -68,10 +68,10 @@ let rec build_query_params query funcs event_names_and_types function_names_and_
         begin
           match List.assoc_opt name funcs with
           | Some(_, dt, _, _) -> show_dtype dt
-          | None -> raise (SyntaxError(Printf.sprintf "Function %s is not defined" name))
+          | None -> raise (SyntaxError(sprintf "Function %s is not defined" name))
         end in
       let event_param_type = List.nth (List.assoc e event_names_and_types) pos in
-      if function_type <> event_param_type then raise (TypeError(Printf.sprintf "Function type %s doesn't match type %s needed for event" function_type event_param_type));
+      if function_type <> event_param_type then raise (TypeError(sprintf "Function type %s doesn't match type %s needed for event" function_type event_param_type));
       List.flatten (List.mapi (fun i arg -> inner e arg i (List.assoc name function_names_and_types)) args)
     | (Func(name, args), _) -> 
       List.flatten (List.mapi (fun i arg -> inner e arg i (List.assoc name function_names_and_types)) args)
@@ -124,10 +124,10 @@ and show_local_type p bnr channels prefix continue = function
   | LLet (ident, term, local_type) -> prefix ^ "let " ^ show_pattern ident ^ " = " ^ show_term term ^ " in\n" ^ show_local_type p bnr channels prefix continue local_type
   | LEvent (ident, termlist, local_type) -> prefix ^ "event " ^ ident ^ "(" ^ show_term_list termlist ^ ");\n" ^ show_local_type p bnr channels prefix continue local_type
   | LChoose(_, _, lb, rb, penv, local_type) | LOffer(_, _, lb, rb, penv, local_type) -> 
-      let branch_call = Printf.sprintf "%sB%d(%s)" p (bnr+1) (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) penv))) in
-      let left = Printf.sprintf "%s(\n%s\tlet Left(leftbr) = branchchoice in\n%s\n%s)" prefix prefix (show_local_type p bnr channels (prefix ^ "\t") branch_call lb) prefix in
-      let right = Printf.sprintf "%s(\n%s\tlet Right(rightbr) = branchchoice in\n%s\n%s)" prefix prefix (show_local_type p bnr channels (prefix ^ "\t") branch_call rb) prefix in
-      Printf.sprintf "%sin(c, branchchoice: bitstring);\n%s\n%s|\n%s" prefix left prefix right
+      let branch_call = sprintf "%sB%d(%s)" p (bnr+1) (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) penv))) in
+      let left = sprintf "%s(\n%s\tlet Left(leftbr) = branchchoice in\n%s\n%s)" prefix prefix (show_local_type p bnr channels (prefix ^ "\t") branch_call lb) prefix in
+      let right = sprintf "%s(\n%s\tlet Right(rightbr) = branchchoice in\n%s\n%s)" prefix prefix (show_local_type p bnr channels (prefix ^ "\t") branch_call rb) prefix in
+      sprintf "%sin(c, branchchoice: bitstring);\n%s\n%s|\n%s" prefix left prefix right
   | LLocalEnd -> prefix ^ "0"
   | LBranchEnd -> prefix ^ continue
 
@@ -173,7 +173,7 @@ and build_event_types = function
 let rec find_and_print_branch_functions bnr channels l p =
   match l with
   | LChoose(_, _, lb, rb, penv, next) | LOffer(_, _, lb, rb, penv, next) ->
-    Printf.sprintf "%slet %sB%d(%s) =\n%s.\n\n" (find_and_print_branch_functions (bnr+1) channels next p) p bnr (String.concat ", " ((show_party_channels p [] ": channel" channels)@(List.map (fun (name, dt) -> name ^ ": " ^ show_dtype dt) penv))) (show_local_type p bnr channels "\t" "" next)
+    sprintf "%slet %sB%d(%s) =\n%s.\n\n" (find_and_print_branch_functions (bnr+1) channels next p) p bnr (String.concat ", " ((show_party_channels p [] ": channel" channels)@(List.map (fun (name, dt) -> name ^ ": " ^ show_dtype dt) penv))) (show_local_type p bnr channels "\t" "" next)
   | LSend(_, _, _, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
   | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_and_print_branch_functions bnr channels next p
   | LBranchEnd | LLocalEnd -> ""
@@ -186,27 +186,27 @@ let proverif (pr:problem): unit =
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
   let locals = List.map (fun (p, _) -> (p, (compile env pr.formats pr.functions pr.events p pr.protocol))) pr.principals in
-  Printf.printf  "(* Protocol: %s *)\n\n" pr.name;
-  Printf.printf "free c: channel.\n\n%s\n\n" "fun Left(bitstring): bitstring [data].\nfun Right(bitstring): bitstring [data].";
+  printf  "(* Protocol: %s *)\n\n" pr.name;
+  printf "free c: channel.\n\n%s\n\n" "fun Left(bitstring): bitstring [data].\nfun Right(bitstring): bitstring [data].";
   List.iter (fun t -> 
-    Printf.printf "type %s.\n" (show_dtype t)) pr.types;
-  Printf.printf "%s\n" "";
+    printf "type %s.\n" (show_dtype t)) pr.types;
+  printf "%s\n" "";
   List.iter (fun f -> 
-    Printf.printf "%s\n" (show_format f)) pr.formats;
-  Printf.printf "%s\n" "";
+    printf "%s\n" (show_format f)) pr.formats;
+  printf "%s\n" "";
   List.iter (fun t -> 
-    Printf.printf "%s.\n" (show_function t)) pr.functions;
-  Printf.printf "%s\n" "";
+    printf "%s.\n" (show_function t)) pr.functions;
+  printf "%s\n" "";
   List.iter (fun e -> 
-    Printf.printf "%s.\n" (show_equation e function_types)) pr.equations;
-  Printf.printf "%s\n" "";
+    printf "%s.\n" (show_equation e function_types)) pr.equations;
+  printf "%s\n" "";
   List.iter (fun e -> 
-    Printf.printf "%s.\n" (show_event_def e)) pr.events;
-  if List.length pr.events > 0 then Printf.printf "%s\n" "";
+    printf "%s.\n" (show_event_def e)) pr.events;
+  if List.length pr.events > 0 then printf "%s\n" "";
   List.iter (fun q -> 
-    Printf.printf "%s.\n" (show_query_with_params q pr.functions event_types function_types)) pr.queries;
-  if List.length pr.queries > 0 then Printf.printf "%s\n" "";
+    printf "%s.\n" (show_query_with_params q pr.functions event_types function_types)) pr.queries;
+  if List.length pr.queries > 0 then printf "%s\n" "";
   List.iter (fun (p, plocals) ->
-    Printf.printf "%s" (find_and_print_branch_functions 1 channels plocals p)) locals;
-  List.iter (fun (p, b) -> Printf.printf "let %s(%s) = \n%s.\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type p 0 channels "\t" "" (List.assoc p locals))) pr.principals;
-  Printf.printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))
+    printf "%s" (find_and_print_branch_functions 1 channels plocals p)) locals;
+  List.iter (fun (p, b) -> printf "let %s(%s) = \n%s.\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type p 0 channels "\t" "" (List.assoc p locals))) pr.principals;
+  printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))

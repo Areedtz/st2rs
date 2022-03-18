@@ -60,7 +60,6 @@ and exps =
 and block =
     Empty
   | BStmts of stmts list
-  | BStmtsExp of stmts * exp
 
 and ref =
     Ref
@@ -89,6 +88,5 @@ and stmts =
   | SExp of exp
   | SIfStatement of ifStatement
   | SFunction of rFunction
-  | SStruct of rStruct
   | SBranch of branchStatement
   | End

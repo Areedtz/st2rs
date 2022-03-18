@@ -1,9 +1,10 @@
 open Lexer
 open Lexing
-open Printf
 open Rusttypes
 open Localtypes
 open Proverif
+
+let fprintf = Printf.fprintf
 
 let print_position outx lexbuf =
   let pos = lexbuf.lex_curr_p in

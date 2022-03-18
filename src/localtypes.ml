@@ -9,6 +9,8 @@ let rec show_term = function
   | And(t1, t2) -> show_term t1 ^ " & " ^ show_term t2
   | Or(t1, t2) -> show_term t1 ^ " | " ^ show_term t2
   | Not(t) -> "~" ^ show_term t
+  | If(t1, t2, t3) -> "if (" ^ show_term t1 ^ ") then " ^ show_term t2 ^ " else " ^ show_term t3
+  | Null -> ""
 
 (* List options: empty, single item, list *)
 and show_term_list = function
