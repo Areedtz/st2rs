@@ -45,6 +45,7 @@ rule read =
   | "new"    { NEW }
   | "let"    { LET }
   | "event"  { EVENT }
+  | "inj-event" { INJ_EVENT }
   | "in"     { IN }
   | "end"    { END }
   | "if"     { IF }
@@ -59,8 +60,11 @@ rule read =
   | "Functions"  { FUNCTIONS }
   | "Equations"  { EQUATIONS }
   | "Formats"    { FORMATS }
+  | "Events"    { EVENTS }
+  | "Queries"    { QUERIES }
   | "Protocol"   { PROTOCOL }
   | "->"         { ARROW }
+  | "=>"         { BIGARROW }
   | "*->"        { AUTH }
   | "->*"        { CONF }
   | "*->*"       { AUTHCONF }
@@ -72,7 +76,6 @@ rule read =
 
 and read_string buf =
   parse
-  | '"'       { STRING (Buffer.contents buf) }
   | '\\' '/'  { Buffer.add_char buf '/'; read_string buf lexbuf }
   | '\\' '\\' { Buffer.add_char buf '\\'; read_string buf lexbuf }
   | '\\' 'b'  { Buffer.add_char buf '\b'; read_string buf lexbuf }

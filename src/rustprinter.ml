@@ -1,5 +1,7 @@
 open Rusttypes2
 
+let sprintf = Printf.sprintf
+
 let handwritten =
 "extern crate session_types;
 use session_types::*;
@@ -31,7 +33,10 @@ fn close<E>(c: Chan<E, Eps>) { c.close() }
 
 let printHandWritten = handwritten
 
-let tabulate len = Printf.sprintf "%*s" (len*4) ""
+let rec tabulate len =
+  match len with
+  | 0 -> ""
+  | _ -> "\t" ^ tabulate (len-1)
 
 let rec printStructPattern = function
       StructPattern(rId, args) -> printrId rId ^ "(" ^ String.concat ", " (List.map (fun a -> printrId a) args) ^ ")"
@@ -39,10 +44,8 @@ let rec printStructPattern = function
 and printStructValues = function
     StructValue(x) -> printExp x
 
-
 and printStruct = function
     Struct(ID(name), RTypes(types)) -> "#[derive(Serialize, Deserialize)]\n" ^ "struct " ^ name ^ "(" ^ printTypes types ^ ");"
-
 
 and printStructs structs = String.concat "\n\n" (List.map (fun s-> printStruct s) structs)
 
@@ -59,13 +62,13 @@ and printExp = function
     | Exps(exps) -> String.concat ", " (List.map (fun i-> printExp i) exps)
     | OExp(exp, Equals, exp2) -> "&" ^ printExp exp ^ " == " ^  "&" ^ printExp exp2
     | OExp(exp, And, exp2) -> printExp exp ^ " && " ^ printExp exp2
+    | OExp(exp, Or, exp2) -> printExp exp ^ " || " ^ printExp exp2
     | Unimplemented -> "unimplemented!()"
-
 
 and printSDeclExp = function
     DeclExp (rId, exp) -> "let " ^ printrId rId ^ " = " ^ printExp exp
   | PatrExp (s, exp) -> "let " ^ printStructPattern s ^ " = " ^ printExp exp
-(* Repr::from_repr *)
+
 and printBlock tab = function
       Empty -> "{ }"
     | BStmts(lst) when List.length lst = 0 -> "{ }"
@@ -80,6 +83,20 @@ and printBlock tab = function
 
 and printType = function
     U8 -> "u8"
+  | U16 -> "u16"
+  | U32 -> "u32"
+  | U64 -> "u64"
+  | I8 -> "i8"
+  | I16 -> "i16"
+  | I32 -> "i32"
+  | I64 -> "i64"
+  | F32 -> "f32"
+  | F64 -> "f64"
+  | Isize -> "isize"
+  | Usize -> "usize"
+  | Str -> "str"
+  | Boolean -> "bool"
+  | Empty -> ""
   | Custom(s) -> s
 
 and printTypes t =
@@ -94,7 +111,6 @@ and printTypedIds t =
 and printFunction = function
     Function(id, TypedIDs(args), Empty, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ")"^  " " ^ printBlock 1 block
   | Function(id, TypedIDs(args), typ, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ") -> "^ printType typ ^ " " ^ printBlock 1 block
-  | Function(id, args, Empty, block) -> "fn " ^ printrId id ^ "(" ^ ") " ^ printBlock 1 block
 
 and printFunctions funs = String.concat "\n" (List.map (fun f-> printFunction f) funs)
 
@@ -106,10 +122,10 @@ and printStmtList lst = tabulate 1 ^ String.concat (";\n\t") (List.map (fun s ->
 and printBranch = function
   Offer(rid, lb, rb) -> 
     let id = printrId rid in
-    Printf.sprintf "let %s = match %s.offer() {\n\t\tLeft(%s) => %s,\n\t\tRight(%s) => %s\n\t};" id id id (printBlock 3 lb) id (printBlock 3 rb)
+    sprintf "let %s = match %s.offer() {\n\t\tLeft(%s) => %s,\n\t\tRight(%s) => %s\n\t};" id id id (printBlock 3 lb) id (printBlock 3 rb)
   | Choose(rid, lb, rb) ->
     let id = printrId rid in
-    Printf.sprintf "// Need to make a choice on %s. Either %s.sel1() or %s.sel2()\n\t/*\n%s;\n\t*/\n\n\t/*\n%s;\n\t*/\n" id id id (printStmtList lb) (printStmtList rb)
+    sprintf "// Need to make a choice on %s. Either %s.sel1() or %s.sel2()\n\t/*\n%s;\n\t*/\n\n\t/*\n%s;\n\t*/\n" id id id (printStmtList lb) (printStmtList rb)
 
 and printStatements = function
       SDeclExp(declExp) -> printSDeclExp declExp

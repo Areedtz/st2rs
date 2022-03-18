@@ -1,5 +1,5 @@
 Problem: AccountableWarrantExecution;
-Principals: Source, Court, Decryptor, Auditor, Public;
+Principals: Source, Court, Decryptor, Auditor, Judge, Public;
 Knowledge: msg:bytes@Source, 
            id:bytes@Source,
            id:bytes@Court,
@@ -43,6 +43,8 @@ Equations: dec(k, enc(pk(k), m, r)) = m,
            encunwrap(encwrap(id, r)) = <id, r>,
            signunwrap(signwrap(a, c, z)) = <a, c, z>;
 Formats: PKIBEFORM(mpkeyi), PKFORM(pkey);
+Events: OkCourt(), OKaud(bytes), KOaud(bytes), OKdec(bytes);
+Queries: event(OkCourt()), event(OKaud(enc(pk(k), OK(), r))), event(KOaud(idi)), event(OKdec(ctc));
 Protocol:
 Source -> Public: mpkform = PKIBEFORM<mpk>
 Court -> Public: pkaform = PKFORM<pka>
@@ -54,6 +56,11 @@ Source {
 }
 Source *->* Court: ct = ct
 Source -> Public: ct = ct
+Court -> Judge {
+    Left:
+        branch_end
+    Right: end
+}
 Court {
     new r: rand;
     let ctc = enc(pka, id, r);
@@ -80,6 +87,7 @@ Decryptor *->* Auditor: dsign = dsign
 Court {
     let sk = bextract(r, partial);
     let m = decibe(ct, sk);
+    event OkCourt();
 }
 Auditor -> Public: auditableproof1 = <ctcsign, dsign>
 Auditor {

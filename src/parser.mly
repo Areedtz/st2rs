@@ -1,13 +1,13 @@
 %{
   open Types
 %}
+
 %token <string> ID
-%token <string> STRING
-%token COMMA COLON SEMI PCT ARROW AT AUTH CONF AUTHCONF
+%token COMMA COLON SEMI PCT ARROW BIGARROW AT AUTH CONF AUTHCONF
 %token LEFT_PAR RIGHT_PAR LEFT_ANGLE RIGHT_ANGLE LEFT_BRACE RIGHT_BRACE LEFT_BRACK RIGHT_BRACK
 %token EQ AND OR NOT
-%token NEW LET EVENT IN END IF LEFT RIGHT BRANCH_END
-%token PROBLEM PRINCIPALS KNOWLEDGE TYPES FUNCTIONS EQUATIONS FORMATS PROTOCOL DISHONEST LEMMA
+%token NEW LET EVENT INJ_EVENT IN END IF LEFT RIGHT BRANCH_END
+%token PROBLEM PRINCIPALS KNOWLEDGE TYPES FUNCTIONS EQUATIONS FORMATS EVENTS QUERIES PROTOCOL DISHONEST
 %token EOF
 
 %start <Types.problem option> program
@@ -15,6 +15,14 @@
 
 opt_knowledge:
 | KNOWLEDGE; COLON; k = separated_list(COMMA, indef); SEMI; { k }
+| { [] }
+
+opt_events:
+| EVENTS; COLON; e = separated_list(COMMA, evdef); SEMI; { e }
+| { [] }
+
+opt_queries:
+| QUERIES; COLON; q = separated_list(COMMA, qdef); SEMI; { q }
 | { [] }
 
 program:
@@ -25,8 +33,10 @@ program:
   FUNCTIONS; COLON; f = separated_list(COMMA, fundef); SEMI;
   EQUATIONS; COLON; e = separated_list(COMMA, eqdef); SEMI;
   FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI;
+  events = opt_events;
+  queries = opt_queries;
   PROTOCOL; COLON; g = global_type; EOF
-{ Some { name = n; principals = p; knowledge = k; types = t; functions = f; equations = e; formats = formats; protocol = g } };
+{ Some { name = n; principals = p; knowledge = k; types = t; functions = f; equations = e; formats = formats; events = events; queries = queries; protocol = g } };
 
 fundef:
 | f = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR; ARROW; return_type = data_type { (f, (params, return_type, false, [])) }
@@ -38,6 +48,19 @@ eqdef:
 indef:
 | t = ID; COLON; dt = data_type; AT; prin = ID { (t, dt, prin, Null) }
 | t = ID; COLON; dt = data_type; AT; prin = ID; EQ; f = term { (t, dt, prin, f) }
+
+evdef:
+| e = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR { (e, params) }
+
+qdef:
+| event = event { ReachQuery(event) }
+| event = event; BIGARROW; q = qdef { CorrQuery(event, q) }
+
+event:
+| INJ_EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
+  { InjEvent(e, args) }
+| EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
+  { NonInjEvent(e, args) }
 
 prindef:
 | name = ID; LEFT_BRACK; DISHONEST; RIGHT_BRACK

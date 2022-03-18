@@ -1,12 +1,10 @@
 open Types
-open Localtypes
 open Rusttranslator
 
 let abstract_type = "T"
 let concrete_type = "/* unimplemented */"
-let indent = "    "
 let enum = "I"
-let enum_func =  "::"^enum
+let enum_func =  "::" ^ enum
 
 let rec show_term_pair = function
     [] -> ""
@@ -22,6 +20,7 @@ and show_term = function
   | And(t1, t2) -> show_term t1 ^ " & " ^ show_term t2
   | Or(t1, t2) -> show_term t1 ^ " | " ^ show_term t2
   | Not(t) -> "~" ^ show_term t
+  | Null | If(_,_,_) -> ""
 
 and show_format name = name ^ enum_func
 
@@ -31,50 +30,19 @@ and show_term_list_without_lending = function
   | [x] -> "" ^ show_term x (* In all cases we want to lend the value *)
   | (x::xs) ->  "" ^ show_term x ^ ", " ^ show_term_list_without_lending xs
 
-and show_term_list = function
-    [] -> ""
-  | [x] -> "&" ^ show_term x (* In all cases we want to lend the value *)
-  | (x::xs) ->  "&" ^ show_term x ^ ", " ^ show_term_list xs
-
-let rec term_as_type = function
-    Var(x) -> abstract_type
-  | Func(name, args) -> abstract_type (*name ^ "(" ^ get_term_as_type_channel_list args ^ ")"*)
-  | Form(name, args) -> name
-  | Tuple(args) -> "(" ^ term_as_type_list args ^ ")"
-
-and term_as_type_list = function
-    [] -> ""
-  | [x] -> term_as_type x
-  | (x::xs) -> abstract_type ^ ", " ^ term_as_type_list xs
-
-and createArguments (t:data_type list) =
-  let rec inner dt i =
-    match dt with
-      [] -> []
-    | x::xs -> ("a" ^(string_of_int i)^ ": " ^ "&" ^ show_dtype x)::(inner xs (i+1)) in
-  inner t 1
-
-and functions (f : (ident * (data_type list * data_type * bool)) list) =
-    match f with
-  | [] -> []
-  | (name,(args,ret,bool)) :: tail -> ("fn " ^ name ^ "(" ^ (String.concat ", " ("&self"::createArguments args)) ^ ") -> " ^ show_dtype ret) :: functions tail
-
-and print ident term =
-  "println!(\"" ^ ident ^ ": " ^ String.concat " " (List.map (fun t -> "{}") term) ^ "\", " ^ show_term_list term ^ ");\n"
-
 and print_type t =
   match t with
-  | DType dtype -> dtype
-  | DAType (dtype,_) -> dtype
+  | DType(dtype) -> dtype
+  | DAType(wrapper, name) -> wrapper ^ "<" ^ name ^ ">"
+  | _ -> ""
 
 and rust_types type_list =
-  let types = List.map (fun t -> "type "^ print_type t ^ " = " ^ concrete_type ^ ";") type_list in
+  let types = List.map (fun t -> "type " ^ print_type t ^ " = " ^ concrete_type ^ ";") type_list in
   String.concat "\n" (types)
 
 and rust_a_types type_list =
-  let types = List.map (function DAType(s1,s2) -> "#[derive(Serialize, Deserialize)]\npub struct " ^ s1 ^ "<" ^ s2 ^">(Vec<u8>, PhantomData<T>);") type_list in
+  let types = List.map (function t -> "#[derive(Serialize, Deserialize)]\npub struct " ^ print_type t ^ "(Vec<u8>, PhantomData<T>);") type_list in
   String.concat "\n" (types)
-    
 
 and channels acc = function
   Send(sender, receiver, _, _, _, g) | Branch(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
@@ -85,21 +53,12 @@ and channels acc = function
   | DefGlobal(_, _, g, g') -> channels (channels acc g) g'
   | _ -> acc
 
-and output_channel s r = function
-  Send(sender, receiver, _, _, t, g) when sender = s && receiver = r ->
-    "Send<Repr<" ^ term_as_type t ^ ">, " ^ output_channel s r g ^ ">"
-  | Send(sender, receiver, _, _, t, g) when sender = r && receiver = s ->
-    "Recv<Repr<" ^ term_as_type t ^">, " ^ output_channel s r g ^ ">"
-  | Send(_, _, _, _, _, g) -> output_channel s r g
-  | Compute(_, _, g) -> output_channel s r g
-  | _ -> "Eps"
-
 and principal_channels principal channels = 
   List.filter (fun (s, _) -> principal = s) channels
 
 let rec show_equation_params = function
     [] -> ""
-    | ((name, dtype)::l) -> Printf.sprintf "\t\tlet %s = fresh_%s();\n%s" name dtype (show_equation_params l)
+    | ((name, dtype)::l) -> sprintf "\t\tlet %s = fresh_%s();\n%s" name dtype (show_equation_params l)
 
 and rust_equations function_types equations =
   let start = "#[cfg(test)]\nmod tests {\n\tuse super::*;\n" in
@@ -107,7 +66,7 @@ and rust_equations function_types equations =
     match equation with 
     (lhs, rhs) -> 
       let equation_params = build_equation_params lhs rhs function_types in
-      Printf.sprintf "\t#[test]\n\tfn test_equation_%d() {\n%s\t\tassert_eq!(%s, %s);\n\t}\n" counter (show_equation_params equation_params) (show_term lhs) (show_term rhs) in
+      sprintf "\t#[test]\n\tfn test_equation_%d() {\n%s\t\tassert_eq!(%s, %s);\n\t}\n" counter (show_equation_params equation_params) (show_term lhs) (show_term rhs) in
   if List.length equations < 1 
     then ""
     else start ^ (List.fold_left (fun acc equation -> acc ^ equation) "" (List.mapi (fun i equation -> inner equation i) equations)) ^ "}"
@@ -150,8 +109,8 @@ let output_principal_channels principal_locals =
       end
     | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) ->
       inner local_type channels
-    | LLocalEnd -> channels in
-  List.fold_left (fun acc (channel_name, channel) -> acc ^ (Printf.sprintf "type %s = %s;\n" channel_name channel)) "" (inner principal_locals [])
+    | LLocalEnd | LBranchEnd -> channels in
+  List.fold_left (fun acc (channel_name, channel) -> acc ^ (sprintf "type %s = %s;\n" channel_name channel)) "" (inner principal_locals [])
 
 and show_knowledge = function
   knowledge ->
@@ -175,24 +134,23 @@ let rust_output (pr:problem) : unit =
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
   let env = List.map (fun (p, e) -> (p, List.map (fun (i, d, _) -> (i, d)) e)) knowledge in
   let function_types = List.map (fun f -> build_function_types f) pr.functions in
-  Printf.printf "%s\n" (rust_handwritten);
+  printf "%s\n" (rust_handwritten);
   let channel_pairs = channels [] pr.protocol in
-  let principal_locals = List.map (fun (p, _) -> (p, (compile env pr.formats pr.functions p pr.protocol))) pr.principals in
+  let principal_locals = List.map (fun (p, _) -> (p, (compile env pr.formats pr.functions pr.events p pr.protocol))) pr.principals in
   List.iter (fun (p, _) -> 
-      Printf.printf "%s\n" (output_principal_channels (List.assoc p principal_locals))) pr.principals;
+      printf "%s\n" (output_principal_channels (List.assoc p principal_locals))) pr.principals;
   let abstract_types = List.filter_map (function DAType(s1,s2) -> Some(DAType(s1,s2)) | _ -> None) pr.types in
   let concrete_types = List.filter_map (function DType(s1) -> Some(DType(s1)) | _ -> None) pr.types in
-  Printf.printf "\n%s\n" (rust_a_types abstract_types);
-  Printf.printf "\n%s\n" (rust_types concrete_types);
-  Printf.printf "\n%s\n" (rust_formats pr.formats);
-  Printf.printf "\n%s\n" (rust_functions pr.functions concrete_types);
-  Printf.printf "\n%s\n" (rust_equations function_types pr.equations);
-  List.iter (fun (p, b) -> Printf.printf "\n%s\n" (rust_process (principal_channels p channel_pairs) pr.knowledge p (List.assoc p principal_locals))) pr.principals;
-
-  Printf.printf "\nfn main() {%s\n" "";
-  Printf.printf "%s\n" (show_knowledge knowledge);
-  List.iteri (fun i (s, r) -> if i mod 2 = 0 then () else Printf.printf "\tlet (%s, %s) = session_channel();\n" ("c_" ^ s ^ r) ("c_" ^ r ^ s)) channel_pairs;
+  if List.length abstract_types > 0 then printf "\n%s\n" (rust_a_types abstract_types);
+  printf "%s\n" (rust_types concrete_types);
+  printf "\n%s\n" (rust_formats pr.formats);
+  printf "\n%s\n" (rust_functions pr.functions concrete_types);
+  printf "\n%s\n" (rust_equations function_types pr.equations);
+  List.iter (fun (p, b) -> printf "\n%s\n" (rust_process (principal_channels p channel_pairs) pr.knowledge p (List.assoc p principal_locals))) pr.principals;
+  printf "\nfn main() {%s\n" "";
+  printf "%s\n" (show_knowledge knowledge);
+  List.iteri (fun i (s, r) -> if i mod 2 = 0 then () else printf "\tlet (%s, %s) = session_channel();\n" ("c_" ^ s ^ r) ("c_" ^ r ^ s)) channel_pairs;
   List.iter (fun (p, _) ->
-    Printf.printf "\tlet %s_t = thread::spawn(move || %s(%s));\n" (String.lowercase p) (String.lowercase p) (String.concat ", " ((List.map (fun (s, r) -> "c_" ^ s ^ r) (List.rev (principal_channels p channel_pairs)))@(show_principal_knowledge p pr.knowledge)))) pr.principals;
-  Printf.printf "\tlet _ = (%s);\n" (String.concat ", " (List.map (fun (p, _) -> (String.lowercase p) ^ "_t.join()") pr.principals));
-  Printf.printf "}%s" "";
+    printf "\tlet %s_t = thread::spawn(move || %s(%s));\n" (String.lowercase_ascii p) (String.lowercase_ascii p) (String.concat ", " ((List.map (fun (s, r) -> "c_" ^ s ^ r) (List.rev (principal_channels p channel_pairs)))@(show_principal_knowledge p pr.knowledge)))) pr.principals;
+  printf "\tlet _ = (%s);\n" (String.concat ", " (List.map (fun (p, _) -> (String.lowercase_ascii p) ^ "_t.join()") pr.principals));
+  printf "}%s" "";
