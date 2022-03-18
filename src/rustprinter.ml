@@ -33,7 +33,10 @@ fn close<E>(c: Chan<E, Eps>) { c.close() }
 
 let printHandWritten = handwritten
 
-let tabulate len = sprintf "%*s" (len*4) ""
+let rec tabulate len =
+  match len with
+  | 0 -> ""
+  | _ -> "\t" ^ tabulate (len-1)
 
 let rec printStructPattern = function
       StructPattern(rId, args) -> printrId rId ^ "(" ^ String.concat ", " (List.map (fun a -> printrId a) args) ^ ")"
