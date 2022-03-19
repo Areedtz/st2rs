@@ -75,7 +75,7 @@ and printBlock tab = function
     | BStmts(lst) -> 
       let s = String.concat ("\n" ^ tabulate tab) (List.map (fun s -> 
         match s with
-        | SBranch(branch) -> printBranch branch
+        | SBranch(branch) -> printBranch tab branch
         | _ -> printStatements s ^ ";"
       ) lst) in
       ("{\n" ^ tabulate tab) ^ String.sub s 0 ((String.length s) - 1)
@@ -117,15 +117,22 @@ and printFunctions funs = String.concat "\n" (List.map (fun f-> printFunction f)
 and printIf st block =
   "if " ^ printExp st  ^ " " ^ printBlock 1 block
 
-and printStmtList lst = tabulate 1 ^ String.concat (";\n\t") (List.map (fun s -> printStatements s) lst)
+and printStmtList tab lst = tabulate tab ^ String.concat (";\n" ^ (tabulate tab)) (List.map (fun s -> printStatements s) lst)
 
-and printBranch = function
+and printBranch tab = function
   Offer(rid, lb, rb) -> 
+    let tab = tab + 1 in
     let id = printrId rid in
-    sprintf "let %s = match %s.offer() {\n\t\tLeft(%s) => %s,\n\t\tRight(%s) => %s\n\t};" id id id (printBlock 3 lb) id (printBlock 3 rb)
+    let mtch = sprintf "let %s = match %s.offer() {\n" id id in
+    let left = sprintf "%sLeft(%s) => %s,\n" (tabulate tab) id (printBlock (tab+1) lb) in
+    let right = sprintf "%sRight(%s) => %s" (tabulate tab) id (printBlock (tab+1) rb) in
+    sprintf "%s%s%s\n%s};" mtch left right (tabulate (tab-1))
   | Choose(rid, lb, rb) ->
     let id = printrId rid in
-    sprintf "// Need to make a choice on %s. Either %s.sel1() or %s.sel2()\n\t/*\n%s;\n\t*/\n\n\t/*\n%s;\n\t*/\n" id id id (printStmtList lb) (printStmtList rb)
+    let comment = sprintf "// Need to make a choice on %s. Either %s.sel1() or %s.sel2()\n" id id id in
+    let left = sprintf "%s/*\n%s;\n%s*/\n" (tabulate tab) (printStmtList tab lb) (tabulate tab) in
+    let right = sprintf "%s/*\n%s;\n%s*/\n" (tabulate tab) (printStmtList tab rb) (tabulate tab) in
+    sprintf "%s%s\n%s" comment left right
 
 and printStatements = function
       SDeclExp(declExp) -> printSDeclExp declExp
@@ -133,5 +140,5 @@ and printStatements = function
     | SExp(exp) -> printExp exp
     | SFunction(rFunction) -> printFunction rFunction
     | SIfStatement(If(st, block)) -> printIf st block
-    | SBranch(branch) -> printBranch branch
+    | SBranch(branch) -> printBranch 2 branch
     | End -> ""

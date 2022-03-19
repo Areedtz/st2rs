@@ -143,13 +143,14 @@ let rust_output (pr:problem) : unit =
   let concrete_types = List.filter_map (function DType(s1) -> Some(DType(s1)) | _ -> None) pr.types in
   if List.length abstract_types > 0 then printf "\n%s\n" (rust_a_types abstract_types);
   printf "%s\n" (rust_types concrete_types);
-  printf "\n%s\n" (rust_formats pr.formats);
+  if List.length pr.formats > 0 then printf "\n%s\n" (rust_formats pr.formats);
   printf "\n%s\n" (rust_functions pr.functions concrete_types);
   printf "\n%s\n" (rust_equations function_types pr.equations);
   List.iter (fun (p, b) -> printf "\n%s\n" (rust_process (principal_channels p channel_pairs) pr.knowledge p (List.assoc p principal_locals))) pr.principals;
   printf "\nfn main() {%s\n" "";
   printf "%s\n" (show_knowledge knowledge);
   List.iteri (fun i (s, r) -> if i mod 2 = 0 then () else printf "\tlet (%s, %s) = session_channel();\n" ("c_" ^ s ^ r) ("c_" ^ r ^ s)) channel_pairs;
+  if List.length channel_pairs > 0 then printf "%s\n" (rust_a_types abstract_types);
   List.iter (fun (p, _) ->
     printf "\tlet %s_t = thread::spawn(move || %s(%s));\n" (String.lowercase_ascii p) (String.lowercase_ascii p) (String.concat ", " ((List.map (fun (s, r) -> "c_" ^ s ^ r) (List.rev (principal_channels p channel_pairs)))@(show_principal_knowledge p pr.knowledge)))) pr.principals;
   printf "\tlet _ = (%s);\n" (String.concat ", " (List.map (fun (p, _) -> (String.lowercase_ascii p) ^ "_t.join()") pr.principals));
