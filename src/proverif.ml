@@ -65,8 +65,13 @@ let rec show_query = function
 let rec build_query_params query funcs event_names_and_types function_names_and_types = (* [(var name, type)...] *)
   let rec inner e t pos function_types =
     match (t, function_types) with
-    | (Var(x), []) -> [(x, List.nth (List.assoc e event_names_and_types) pos)]
-    | (Var(x), _) -> [(x, List.nth function_types pos)]
+    | (Var(x), []) -> 
+      let types = List.assoc e event_names_and_types in
+      if pos >= List.length types then raise (SyntaxError(sprintf "Too many arguments passed to %s event" e));
+      [(x, List.nth types pos)]
+    | (Var(x), _) -> 
+      if pos >= List.length function_types then raise (SyntaxError(sprintf "Too many arguments passed to function in event %s" e));
+      [(x, List.nth function_types pos)]
     | (Func(name, args), []) -> 
       let function_type = 
         begin
@@ -74,7 +79,9 @@ let rec build_query_params query funcs event_names_and_types function_names_and_
           | Some(_, dt, _, _) -> show_dtype dt
           | None -> raise (SyntaxError(sprintf "Function %s is not defined" name))
         end in
-      let event_param_type = List.nth (List.assoc e event_names_and_types) pos in
+      let types = List.assoc e event_names_and_types in
+      if pos >= List.length types then raise (SyntaxError(sprintf "Too many arguments passed to %s event" e));
+      let event_param_type = List.nth types pos in
       if function_type <> event_param_type then raise (TypeError(sprintf "Function type %s doesn't match type %s needed for event" function_type event_param_type));
       List.flatten (List.mapi (fun i arg -> inner e arg i (List.assoc name function_names_and_types)) args)
     | (Func(name, args), _) -> 
@@ -85,12 +92,18 @@ let rec build_query_params query funcs event_names_and_types function_names_and_
     | ReachQuery(event) -> 
       begin
         match event with
-        | NonInjEvent(e, args) | InjEvent(e, args) -> List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
+        | NonInjEvent(e, args) | InjEvent(e, args) -> 
+          let event_types = List.assoc e event_names_and_types in
+          if List.length args <> List.length event_types then raise (SyntaxError(sprintf "Wrong number of arguments passed to %s event" e));
+          List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
       end
     | CorrQuery(event, next) ->
       begin
         match event with
-        | NonInjEvent(e, args) | InjEvent(e, args) -> List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
+        | NonInjEvent(e, args) | InjEvent(e, args) -> 
+          let event_types = List.assoc e event_names_and_types in
+          if List.length args <> List.length event_types then raise (SyntaxError(sprintf "Wrong number of arguments passed to %s event" e));
+          List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
       end
       @ build_query_params next funcs event_names_and_types function_names_and_types in
   List.sort_uniq (fun (a, _) (c, _) -> compare a c) params
