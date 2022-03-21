@@ -49,8 +49,6 @@ rule read =
   | "in"     { IN }
   | "end"    { END }
   | "if"     { IF }
-  | "Left"   { LEFT }
-  | "Right"  { RIGHT }
   | "branch_end" { BRANCH_END }
   | "dishonest"  { DISHONEST }
   | "Problem"    { PROBLEM }
