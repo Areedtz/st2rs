@@ -163,12 +163,19 @@ and instantiate_party_process_vars party = function
   knowledge -> List.map (fun (i, _, _) -> i) (List.assoc party knowledge)
 
 let rec build_channels acc = function
-    Send(sender, receiver, opt, _, _, g) | Branch(sender, receiver, opt, _, _, g) when opt != Public ->
+    Send(sender, receiver, opt, _, _, g) when opt != Public ->
       let channel_name = show_channel (if receiver < sender then receiver ^ sender else sender ^ receiver) opt in
       let parties = (sender, receiver) in
       build_channels ((parties, channel_name)::acc) g
-  | Send(_, _, _, _, _, g) | Branch(_, _, _, _, _, g) | Compute(_, _, g) -> build_channels acc g
+  | Branch(sender, receiver, opt, lb, rb, g) when opt != Public ->
+      let channel_name = show_channel (if receiver < sender then receiver ^ sender else sender ^ receiver) opt in
+      let parties = (sender, receiver) in
+      build_channels ((parties, channel_name)::(build_channels (build_channels acc lb) rb)) g
+  | Branch(sender, receiver, opt, lb, rb, g) ->
+      build_channels (build_channels (build_channels acc lb) rb) g
+  | Send(_, _, _, _, _, g) | Compute(_, _, g) -> build_channels acc g
   | DefGlobal(_, _, g, g') -> build_channels (build_channels acc g) g'
+  | BranchEnd -> acc
   | _ -> List.sort_uniq (fun (_, a) (_, b) -> compare a b) acc
 
 and build_event_types = function
