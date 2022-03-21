@@ -136,7 +136,7 @@ let rust_output (pr:problem) : unit =
   let function_types = List.map (fun f -> build_function_types f) pr.functions in
   printf "%s\n" (rust_handwritten);
   let channel_pairs = channels [] pr.protocol in
-  let principal_locals = List.map (fun (p, _) -> (p, (compile env pr.formats pr.functions pr.events p pr.protocol))) pr.principals in
+  let principal_locals = List.map (fun (p, _) -> (p, (compile pr.principals env pr.formats pr.functions pr.events p pr.protocol))) pr.principals in
   List.iter (fun (p, _) -> 
       printf "%s\n" (output_principal_channels (List.assoc p principal_locals))) pr.principals;
   let abstract_types = List.filter_map (function DAType(s1,s2) -> Some(DAType(s1,s2)) | _ -> None) pr.types in
