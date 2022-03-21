@@ -41,6 +41,7 @@ rule read =
   | ';'      { SEMI }
   | '@'      { AT }
   | '%'      { PCT }
+  | '#' [^ '\n']*      { read lexbuf }
   | '"'      { read_string (Buffer.create 17) lexbuf }
   | "new"    { NEW }
   | "let"    { LET }
