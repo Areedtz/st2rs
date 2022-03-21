@@ -144,7 +144,7 @@ channel_option:
 global_type:
 | prin1 = ID; chan = channel_option; prin2 = ID; COLON; x = ID; EQ; t = term; gt = global_type
   { Send(prin1, prin2, chan, x, t, gt ) }
-| prin1 = ID; chan = channel_option; prin2 = ID; LEFT_BRACE; LEFT; COLON; lb = global_type; RIGHT; COLON; rb = global_type; RIGHT_BRACE; gt = global_type
+| prin1 = ID; chan = channel_option; prin2 = ID; LEFT_BRACE; ID; COLON; lb = global_type; ID; COLON; rb = global_type; RIGHT_BRACE; gt = global_type
   { Branch(prin1, prin2, chan, lb, rb, gt) }
 | prin = ID; LEFT_BRACE; lb = let_bind; RIGHT_BRACE; gt = global_type
   { Compute(prin, lb, gt) }
