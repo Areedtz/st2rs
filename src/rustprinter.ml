@@ -42,7 +42,7 @@ let rec printStructPattern = function
       StructPattern(rId, args) -> printrId rId ^ "(" ^ String.concat ", " (List.map (fun a -> printrId a) args) ^ ")"
 
 and printStructValues = function
-    StructValue(x) -> printExp x
+    StructValue(x) -> printExp 0 x
 
 and printStruct = function
     Struct(ID(name), RTypes(types)) -> "#[derive(Serialize, Deserialize)]\n" ^ "struct " ^ name ^ "(" ^ printTypes types ^ ");"
@@ -52,31 +52,32 @@ and printStructs structs = String.concat "\n\n" (List.map (fun s-> printStruct s
 and printrId = function
     ID(s) -> s
 
-and printExp = function
+and printExp tab = function
       Id(id) -> printrId id
     | Ids([]) -> ""
     | Ids(lst) -> "(" ^ String.concat ", " (List.map (fun i-> printrId i) lst) ^ ")"
-    | Ref(ref, exp) -> "&" ^ printExp exp
+    | Ref(ref, exp) -> "&" ^ printExp tab exp
     | EStruct(id, StructValues(structValues)) -> printrId id ^ "(" ^ String.concat ", " (List.map (fun x-> printStructValues x) structValues) ^ ")"
-    | Exp(exp1, exp2) -> printExp exp1 ^ "(" ^ printExp exp2 ^ ")"
-    | Exps(exps) -> String.concat ", " (List.map (fun i-> printExp i) exps)
-    | OExp(exp, Equals, exp2) -> "&" ^ printExp exp ^ " == " ^  "&" ^ printExp exp2
-    | OExp(exp, And, exp2) -> printExp exp ^ " && " ^ printExp exp2
-    | OExp(exp, Or, exp2) -> printExp exp ^ " || " ^ printExp exp2
+    | Exp(exp1, exp2) -> printExp tab exp1 ^ "(" ^ printExp tab exp2 ^ ")"
+    | Exps(exps) -> String.concat ", " (List.map (fun i-> printExp tab i) exps)
+    | OExp(exp, Equals, exp2) -> printExp tab exp ^ " == " ^  printExp tab exp2
+    | OExp(exp, And, exp2) -> printExp tab exp ^ " && " ^ printExp tab exp2
+    | OExp(exp, Or, exp2) -> printExp tab exp ^ " || " ^ printExp tab exp2
+    | IfAssign(cond, block1, block2) -> sprintf "if %s %s else %s" (printExp tab cond) (printBlock (tab+1) block1) (printBlock (tab+1) block2)
     | Unimplemented -> "unimplemented!()"
 
-and printSDeclExp = function
-    DeclExp (rId, exp) -> "let " ^ printrId rId ^ " = " ^ printExp exp
-  | PatrExp (s, exp) -> "let " ^ printStructPattern s ^ " = " ^ printExp exp
+and printSDeclExp tab = function
+    DeclExp (rId, exp) -> "let " ^ printrId rId ^ " = " ^ printExp tab exp
+  | PatrExp (s, exp) -> "let " ^ printStructPattern s ^ " = " ^ printExp tab exp
 
 and printBlock tab = function
       Empty -> "{ }"
     | BStmts(lst) when List.length lst = 0 -> "{ }"
     | BStmts(lst) -> 
       let s = String.concat ("\n" ^ tabulate tab) (List.map (fun s -> 
-        match s with
-        | SBranch(branch) -> printBranch tab branch
-        | _ -> printStatements s ^ ";"
+        match s with 
+        | SBranch(Choose(_, _, _)) -> printStatements tab s
+        | _ -> printStatements tab s ^ ";"
       ) lst) in
       ("{\n" ^ tabulate tab) ^ String.sub s 0 ((String.length s) - 1)
        ^ ("\n" ^ tabulate (tab - 1)  ^ "}")
@@ -109,24 +110,23 @@ and printTypedIds t =
   String.concat ", " (List.map (fun typ -> printTypedId typ) t)
 
 and printFunction = function
-    Function(id, TypedIDs(args), Empty, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ")"^  " " ^ printBlock 1 block
-  | Function(id, TypedIDs(args), typ, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ") -> "^ printType typ ^ " " ^ printBlock 1 block
+    Function(id, TypedIDs(args), Empty, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ")" ^  " " ^ printBlock 1 block
+  | Function(id, TypedIDs(args), typ, block) -> "fn " ^ printrId id ^ "(" ^ printTypedIds args ^ ") -> " ^ printType typ ^ " " ^ printBlock 1 block
 
 and printFunctions funs = String.concat "\n" (List.map (fun f-> printFunction f) funs)
 
-and printIf st block =
-  "if " ^ printExp st  ^ " " ^ printBlock 1 block
+and printIf tab st block =
+  "if " ^ printExp tab st  ^ " " ^ printBlock (tab+1) block
 
-and printStmtList tab lst = tabulate tab ^ String.concat (";\n" ^ (tabulate tab)) (List.map (fun s -> printStatements s) lst)
+and printStmtList tab lst = tabulate tab ^ String.concat (";\n" ^ (tabulate tab)) (List.map (fun s -> printStatements tab s) lst)
 
 and printBranch tab = function
   Offer(rid, lb, rb) -> 
-    let tab = tab + 1 in
     let id = printrId rid in
     let mtch = sprintf "let %s = match %s.offer() {\n" id id in
-    let left = sprintf "%sLeft(%s) => %s,\n" (tabulate tab) id (printBlock (tab+1) lb) in
-    let right = sprintf "%sRight(%s) => %s" (tabulate tab) id (printBlock (tab+1) rb) in
-    sprintf "%s%s%s\n%s};" mtch left right (tabulate (tab-1))
+    let left = sprintf "%sLeft(%s) => %s,\n" (tabulate (tab+1)) id (printBlock (tab+2) lb) in
+    let right = sprintf "%sRight(%s) => %s" (tabulate (tab+1)) id (printBlock (tab+2) rb) in
+    sprintf "%s%s%s\n%s}" mtch left right (tabulate (tab))
   | Choose(rid, lb, rb) ->
     let id = printrId rid in
     let comment = sprintf "// Need to make a choice on %s. Either %s.sel1() or %s.sel2()\n" id id id in
@@ -134,11 +134,11 @@ and printBranch tab = function
     let right = sprintf "%s/*\n%s;\n%s*/\n" (tabulate tab) (printStmtList tab rb) (tabulate tab) in
     sprintf "%s%s\n%s" comment left right
 
-and printStatements = function
-      SDeclExp(declExp) -> printSDeclExp declExp
-    | SBlock(block) -> printBlock 1 block
-    | SExp(exp) -> printExp exp
+and printStatements tab = function
+      SDeclExp(declExp) -> printSDeclExp tab declExp
+    | SBlock(block) -> printBlock tab block
+    | SExp(exp) -> printExp tab exp
     | SFunction(rFunction) -> printFunction rFunction
-    | SIfStatement(If(st, block)) -> printIf st block
-    | SBranch(branch) -> printBranch 2 branch
+    | SIfStatement(If(st, block)) -> printIf tab st block
+    | SBranch(branch) -> printBranch tab branch
     | End -> ""
