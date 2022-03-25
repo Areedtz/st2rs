@@ -17,6 +17,10 @@ opt_knowledge:
 | KNOWLEDGE; COLON; k = separated_list(COMMA, indef); SEMI; { k }
 | { [] }
 
+opt_formats:
+| FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI; { formats }
+| { [] }
+
 opt_events:
 | EVENTS; COLON; e = separated_list(COMMA, evdef); SEMI; { e }
 | { [] }
@@ -32,7 +36,7 @@ program:
   TYPES; COLON; t = separated_list(COMMA, data_type); SEMI;
   FUNCTIONS; COLON; f = separated_list(COMMA, fundef); SEMI;
   EQUATIONS; COLON; e = separated_list(COMMA, eqdef); SEMI;
-  FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI;
+  formats = opt_formats;
   events = opt_events;
   queries = opt_queries;
   PROTOCOL; COLON; g = global_type; EOF

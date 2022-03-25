@@ -217,7 +217,7 @@ let proverif (pr:problem): unit =
   printf "%s\n" "";
   List.iter (fun f -> 
     printf "%s\n" (show_format f)) pr.formats;
-  printf "%s\n" "";
+  if List.length pr.formats > 0 then printf "%s\n" "";
   List.iter (fun t -> 
     printf "%s.\n" (show_function t)) pr.functions;
   printf "%s\n" "";
