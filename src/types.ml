@@ -331,22 +331,31 @@ let check_event_types env evs forms funs name terms =
   if List.length event_types <> List.length terms then raise (SyntaxError(sprintf "Too many params passed to event %s" name));
   List.iteri (fun i t -> if List.nth event_types i <> get_term_type env forms funs t then raise (TypeError(sprintf "Term %s doesn't match type %s" (show_term t) (show_dtype (List.nth event_types i))))) terms
 
-let rec compile env forms funs evs princ gt =
+let check_principle_exists principals p =
+  if List.exists (fun (pl, _) -> pl = p) principals 
+    then () 
+    else raise (SyntaxError (sprintf "Principal %s does not exist in principal list" p))
+
+let rec compile principals env forms funs evs princ gt =
  match gt with
  | Send(s, r, opt, x, t, g) when princ = s ->
+   check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LSend(s, r, opt, t, ttype, compile env' forms funs evs princ g)
+   LSend(s, r, opt, t, ttype, compile principals env' forms funs evs princ g)
  | Send(s, r, opt, x, t, g) when princ = r ->
+   check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
    
-   LRecv(s, r, opt, PVar(x, ttype), t, compile env' forms funs evs princ g)
+   LRecv(s, r, opt, PVar(x, ttype), t, compile principals env' forms funs evs princ g)
  | Send(s, r, _, x, t, g) ->
+   check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   compile env' forms funs evs princ g
+   compile principals env' forms funs evs princ g
  | Compute(p, letb, g) ->
+   check_principle_exists principals p;
    let rec compile_letb inner_env letb =
      match letb with
      | New(name, dt, next) ->
@@ -382,16 +391,19 @@ let rec compile env forms funs evs princ gt =
        if p = princ then
          LEvent(name, terms, compile_letb inner_env next)
        else compile_letb inner_env next
-     | LetEnd -> compile inner_env forms funs evs princ g in
+     | LetEnd -> compile principals inner_env forms funs evs princ g in
    compile_letb env letb
  | Branch(s, r, _, lb, rb, g) when princ = s ->
+   check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(s, r, compile env' forms funs evs princ lb, compile env' forms funs evs princ rb, List.assoc princ env', compile env forms funs evs princ g)
+   LOffer(s, r, compile principals env' forms funs evs princ lb, compile principals env' forms funs evs princ rb, List.assoc princ env', compile principals env forms funs evs princ g)
  | Branch(s, r, _, lb, rb, g) when princ = r ->
+   check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(s, r, compile env' forms funs evs princ lb, compile env' forms funs evs princ rb, List.assoc princ env', compile env forms funs evs princ g)
- | Branch(_, _, _, _, _, g) ->
-   compile env forms funs evs princ g
+   LChoose(s, r, compile principals env' forms funs evs princ lb, compile principals env' forms funs evs princ rb, List.assoc princ env', compile principals env forms funs evs princ g)
+ | Branch(s, r, _, _, _, g) ->
+   check_principle_exists principals s; check_principle_exists principals r;
+   compile principals env forms funs evs princ g
  | BranchEnd -> LBranchEnd
  | _ -> LLocalEnd
 

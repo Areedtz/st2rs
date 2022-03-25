@@ -9,7 +9,7 @@ let fprintf = Printf.fprintf
 let print_position outx lexbuf =
   let pos = lexbuf.lex_curr_p in
   fprintf outx "%s:%d:%d" pos.pos_fname
-    pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
+    pos.pos_lnum pos.pos_bol
 
 let parse_with_error lexbuf =
   try Parser.program Lexer.read lexbuf with

@@ -15,12 +15,12 @@ let rec translateTerm t =
   | Var(x) -> Id(ID(x))
   | Func(name, args) -> Exp(Id(ID(name)), translateArgs args)
   | Form(name, args) -> EStruct((ID(name)), StructValues(List.map (fun x-> StructValue x) ((List.map (fun a -> translateTerm a) args))))
-  | Tuple(args) -> Id(ID("(" ^ printExp (translateArgs args) ^ ")"))
-  | Eq(l, r) -> Id(ID(printExp (translateTerm l) ^ " == " ^ printExp (translateTerm r)))
-  | And(l, r) -> Id(ID(printExp (translateTerm l) ^ " && " ^ printExp (translateTerm r)))
-  | Or(l, r) -> Id(ID(printExp (translateTerm l) ^ " || " ^ printExp (translateTerm r)))
-  | Not(t) -> Id(ID("!" ^ printExp (translateTerm t)))
-  | If(cond, t1, t2) -> Id(ID("if " ^ printExp (translateTerm cond) ^ " {\n\t\t" ^ printExp (translateTerm t1) ^ "\n\t} else {\n\t\t" ^ printExp (translateTerm t2) ^ "\n\t}"))
+  | Tuple(args) -> Id(ID("(" ^ printExp 0(translateArgs args) ^ ")"))
+  | Eq(l, r) -> OExp(translateTerm l, Equals, translateTerm r)
+  | And(l, r) -> OExp(translateTerm l, And, translateTerm r)
+  | Or(l, r) -> OExp(translateTerm l, Or, translateTerm r)
+  | Not(t) -> Id(ID("!" ^ printExp 0 (translateTerm t)))
+  | If(cond, t1, t2) -> IfAssign(translateTerm cond, BStmts([SExp(translateTerm t1)]), BStmts([SExp(translateTerm t2)]))
   | Null -> Id(ID(""))
 
 and combineConditions cons =
@@ -179,4 +179,4 @@ let rec translateChannels principal channels acc =
       translateChannels principal c (TypedID(ID("c_" ^ s ^ r), Custom("Chan<(), " ^ s ^ r ^ ">")) :: acc)
     else translateChannels principal c acc
 
-let rust_process channels knowledge principal proc = (printStatements (SFunction(Function(ID(String.lowercase_ascii principal),TypedIDs(translateChannels principal channels [] @ translateKnowledge principal knowledge []), Empty,(BStmts(process principal channels false proc))))))
+let rust_process channels knowledge principal proc = (printStatements 0 (SFunction(Function(ID(String.lowercase_ascii principal), TypedIDs(translateChannels principal channels [] @ translateKnowledge principal knowledge []), Empty, (BStmts(process principal channels false proc))))))

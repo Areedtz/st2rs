@@ -41,6 +41,7 @@ rule read =
   | ';'      { SEMI }
   | '@'      { AT }
   | '%'      { PCT }
+  | '#' [^ '\n']*      { read lexbuf }
   | '"'      { read_string (Buffer.create 17) lexbuf }
   | "new"    { NEW }
   | "let"    { LET }
@@ -49,8 +50,6 @@ rule read =
   | "in"     { IN }
   | "end"    { END }
   | "if"     { IF }
-  | "Left"   { LEFT }
-  | "Right"  { RIGHT }
   | "branch_end" { BRANCH_END }
   | "dishonest"  { DISHONEST }
   | "Problem"    { PROBLEM }

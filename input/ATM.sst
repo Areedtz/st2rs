@@ -1,0 +1,56 @@
+Problem: ATM;
+Principals: User, ATM, BankComputer, Server, Public;
+Knowledge: uid:id@User,
+           bid:id@User,
+           sku:skey@User,
+           ska:skey@ATM,
+           sks:skey@Server,
+           skb:skey@BankComputer,
+           pka:pkey@User = pk(ska),
+           pks:pkey@ATM = pk(sks),
+           pku:pkey@ATM = pk(sku),
+           pka:pkey@Server = pk(ska),
+           pkb:pkey@Server = pk(skb);
+Types: bytes, pkey, skey, id;
+Functions: pk(skey) -> pkey,
+           enc(pkey, bytes) -> bytes,
+           dec(skey, bytes) -> bytes,
+           wrap(pkey) -> bytes,
+           unwrap(bytes) -> pkey,
+           encwrap(id, id) -> bytes,
+           encunwrap(bytes) -> <id, id>;
+Equations: dec(k, enc(pk(k), m)) = m,
+           encunwrap(encwrap(id, id)) = <id, id>,
+           unwrap(wrap(pkey)) = pkey;
+Formats: ;
+Protocol:
+User {
+    let ct = enc(pka, encwrap(uid, bid));
+}
+User *->* ATM: auth_request = ct
+ATM {
+    new approval: bytes;
+    let <id_user: id, id_bank: id> = encunwrap(dec(ska, auth_request));
+}
+ATM *->* Server {
+    Left: 
+        Server {
+            let reply = enc(pka, wrap(pkb));
+        }
+        Server *->* ATM: approval = reply
+        branch_end
+    Right: end
+}
+ATM {
+    let pkb: pkey = unwrap(dec(ska, approval));
+}
+ATM *->* User {
+    Left: 
+        User {
+            
+        }
+        branch_end
+    Right: end
+}
+
+end

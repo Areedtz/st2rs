@@ -6,7 +6,7 @@
 %token COMMA COLON SEMI PCT ARROW BIGARROW AT AUTH CONF AUTHCONF
 %token LEFT_PAR RIGHT_PAR LEFT_ANGLE RIGHT_ANGLE LEFT_BRACE RIGHT_BRACE LEFT_BRACK RIGHT_BRACK
 %token EQ AND OR NOT
-%token NEW LET EVENT INJ_EVENT IN END IF LEFT RIGHT BRANCH_END
+%token NEW LET EVENT INJ_EVENT IN END IF BRANCH_END
 %token PROBLEM PRINCIPALS KNOWLEDGE TYPES FUNCTIONS EQUATIONS FORMATS EVENTS QUERIES PROTOCOL DISHONEST
 %token EOF
 
@@ -15,6 +15,10 @@
 
 opt_knowledge:
 | KNOWLEDGE; COLON; k = separated_list(COMMA, indef); SEMI; { k }
+| { [] }
+
+opt_formats:
+| FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI; { formats }
 | { [] }
 
 opt_events:
@@ -32,7 +36,7 @@ program:
   TYPES; COLON; t = separated_list(COMMA, data_type); SEMI;
   FUNCTIONS; COLON; f = separated_list(COMMA, fundef); SEMI;
   EQUATIONS; COLON; e = separated_list(COMMA, eqdef); SEMI;
-  FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI;
+  formats = opt_formats;
   events = opt_events;
   queries = opt_queries;
   PROTOCOL; COLON; g = global_type; EOF
@@ -144,7 +148,7 @@ channel_option:
 global_type:
 | prin1 = ID; chan = channel_option; prin2 = ID; COLON; x = ID; EQ; t = term; gt = global_type
   { Send(prin1, prin2, chan, x, t, gt ) }
-| prin1 = ID; chan = channel_option; prin2 = ID; LEFT_BRACE; LEFT; COLON; lb = global_type; RIGHT; COLON; rb = global_type; RIGHT_BRACE; gt = global_type
+| prin1 = ID; chan = channel_option; prin2 = ID; LEFT_BRACE; ID; COLON; lb = global_type; ID; COLON; rb = global_type; RIGHT_BRACE; gt = global_type
   { Branch(prin1, prin2, chan, lb, rb, gt) }
 | prin = ID; LEFT_BRACE; lb = let_bind; RIGHT_BRACE; gt = global_type
   { Compute(prin, lb, gt) }
