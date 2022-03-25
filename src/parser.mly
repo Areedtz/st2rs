@@ -156,8 +156,6 @@ global_type:
   { DefGlobal(name, gt1, gt2) }
 | name = ID; LEFT_PAR; RIGHT_PAR
   { CallGlobal(name) }
-| BRANCH_END
-  { BranchEnd }
 | END
   { GlobalEnd };
 

@@ -74,19 +74,18 @@ type global_type =
   | DefGlobal of ident * global_type * global_type
   | CallGlobal of ident
   | GlobalEnd
-  | BranchEnd
 
 (* Local Type *)
 type local_type =
   LSend of principal * principal * channel_option * term * data_type * local_type
   | LRecv of principal * principal * channel_option * pattern * term * local_type
-  | LOffer of principal * principal * local_type * local_type * (ident * data_type) list * local_type
-  | LChoose of principal * principal * local_type * local_type * (ident * data_type) list * local_type
+  | LOffer of principal * principal * local_type * local_type * local_type
+  | LChoose of principal * principal * local_type * local_type * local_type
   | LNew of ident * data_type * local_type
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
+  | LCall of ident * (ident * data_type) list
   | LLocalEnd
-  | LBranchEnd
 
 type problem = { name: ident;
                  principals: (principal * bool) list;
@@ -171,7 +170,6 @@ and show_global_type = function
 | CallGlobal(name) ->
   name ^ "()"
 | Branch(p, q, opt, lb, rb) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:" ^ show_global_type lb ^ "\n\tRight:" ^ show_global_type rb ^ "\n}\n"
-| BranchEnd -> "branch_end\n"
 | GlobalEnd -> "end\n"
 
 and show_global_type_nr = function
@@ -183,7 +181,6 @@ and show_global_type_nr = function
 | CallGlobal(name) ->
   name ^ "()"
 | Branch(p, q, opt, _, _) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:...\n\tRight:...\n}\n"
-| BranchEnd -> "branch_end\n"
 | GlobalEnd -> "end\n"
 
 and show_params = function
@@ -336,24 +333,36 @@ let check_principle_exists principals p =
     then () 
     else raise (SyntaxError (sprintf "Principal %s does not exist in principal list" p))
 
-let rec compile principals env forms funs evs princ gt =
+let rec get_last_global_type gt =
+  match gt with
+  | Send(_, _, _, _, _, g) | Compute(_, _, g) | DefGlobal(_, _, g) | Branch(_, _, _, g, _)-> get_last_global_type g
+  | _ -> gt
+
+let rec get_last_local_type lt =
+  match lt with
+  | LSend(_, _, _, _, _, lt) | LRecv (_, _, _, _, _, lt) 
+  | LNew (_, _, lt) | LLet (_, _, lt)
+  | LEvent (_, _, lt) | LChoose(_, _, lt, _, _) | LOffer(_, _, lt, _, _) -> get_last_local_type lt
+  | _ -> lt
+
+let rec compile principals env forms funs evs gfuns princ gt =
  match gt with
  | Send(s, r, opt, x, t, g) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LSend(s, r, opt, t, ttype, compile principals env' forms funs evs princ g)
+   LSend(s, r, opt, t, ttype, compile principals env' forms funs evs gfuns princ g)
  | Send(s, r, opt, x, t, g) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
    
-   LRecv(s, r, opt, PVar(x, ttype), t, compile principals env' forms funs evs princ g)
+   LRecv(s, r, opt, PVar(x, ttype), t, compile principals env' forms funs evs gfuns princ g)
  | Send(s, r, _, x, t, g) ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   compile principals env' forms funs evs princ g
+   compile principals env' forms funs evs gfuns princ g
  | Compute(p, letb, g) ->
    check_principle_exists principals p;
    let rec compile_letb inner_env letb =
@@ -391,26 +400,52 @@ let rec compile principals env forms funs evs princ gt =
        if p = princ then
          LEvent(name, terms, compile_letb inner_env next)
        else compile_letb inner_env next
-     | LetEnd -> compile principals inner_env forms funs evs princ g in
+     | LetEnd -> compile principals inner_env forms funs evs gfuns princ g in
    compile_letb env letb
  | Branch(s, r, _, lb, rb) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(s, r, compile principals env' forms funs evs princ lb, compile principals env' forms funs evs princ rb, List.assoc princ env', LLocalEnd)
+   (* Check if lb and rb ends the same way *)
+   let last_global_lb = get_last_global_type lb in
+   let last_global_rb = get_last_global_type rb in
+   if (compare last_global_lb last_global_rb) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way"));
+   let next = 
+    begin
+      match last_global_lb with
+      | CallGlobal(name) -> compile principals env forms funs evs gfuns princ (List.assoc name gfuns)
+      | _ -> LLocalEnd
+    end in
+   LOffer(s, r, compile principals env forms funs evs gfuns princ lb, compile principals env forms funs evs gfuns princ rb, next)
  | Branch(s, r, _, lb, rb) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(s, r, compile principals env' forms funs evs princ lb, compile principals env' forms funs evs princ rb, List.assoc princ env', LLocalEnd)
- | Branch(s, r, _, _, _) ->
+   (* Check if lb and rb ends the same way *)
+   let last_global_lb = get_last_global_type lb in
+   let last_global_rb = get_last_global_type rb in
+   if (compare last_global_lb last_global_rb) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way"));
+   let next = 
+    begin
+      match last_global_lb with
+      | CallGlobal(name) -> compile principals env forms funs evs gfuns princ (List.assoc name gfuns)
+      | _ -> LLocalEnd
+    end in
+   LChoose(s, r, compile principals env forms funs evs gfuns princ lb, compile principals env forms funs evs gfuns princ rb, next)
+ | Branch(s, r, _, lb, _) ->
    check_principle_exists principals s; check_principle_exists principals r;
-   LLocalEnd
- | BranchEnd -> LBranchEnd
+   let next = get_last_global_type lb in
+   begin
+    match next with
+    | Branch(_, _, _, _, _) -> compile principals env forms funs evs gfuns princ next
+    | CallGlobal(name) -> compile principals env forms funs evs gfuns princ (List.assoc name gfuns)
+    | _ -> LLocalEnd
+   end
+ | DefGlobal(_, _, g) -> compile principals env forms funs evs gfuns princ g
+ | CallGlobal(name) -> compile principals env forms funs evs gfuns princ (List.assoc name gfuns)
  | _ -> LLocalEnd
 
-and build_global_funs_list = function
-  Send(_, _, _, _, _, gt) -> build_global_funs_list gt
-  | Compute(_, _, gt) -> build_global_funs_list gt
-  | DefGlobal(name, g, gt) -> [(name, g)]::(build_global_funs_list gt)
+ and build_global_funs_list = function
+  DefGlobal(name, g, gt) -> (name, g)::(build_global_funs_list gt)
+  | Send(_, _, _, _, _, gt) | Compute(_, _, gt) -> build_global_funs_list gt
   | _ -> []
 
 and build_function_types = function

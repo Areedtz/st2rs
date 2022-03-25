@@ -110,12 +110,12 @@ and process princ channels is_branch = function
     let ident = get_channel_name princ sender receiver in
     SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction ("recv") (Id(ID("c_" ^ ident)))))::process princ channels is_branch local_type
   | LEvent (ident, term, local_type) -> process princ channels is_branch local_type
-  | LChoose(sender, receiver, lb, rb, penv, local_type) -> 
+  | LChoose(sender, receiver, lb, rb, local_type) -> 
     let ident = get_channel_name princ sender receiver in
     let sel1 = SDeclExp(DeclExp((ID("c_" ^ ident)), Id(ID("c_" ^ ident ^ ".sel1()")))) in
     let sel2 = SDeclExp(DeclExp((ID("c_" ^ ident)), Id(ID("c_" ^ ident ^ ".sel2()")))) in
     SBranch(Choose(ID("c_" ^ ident), sel1::process princ channels true lb, sel2::process princ channels true rb))::process princ channels is_branch local_type
-  | LOffer(sender, receiver, lb, rb, penv, local_type) -> 
+  | LOffer(sender, receiver, lb, rb, local_type) -> 
     let ident = get_channel_name princ sender receiver in
     let branch_channel = List.filter (fun (s, r) -> sender = s && receiver = r) channels in
     let lb_stmts = process princ branch_channel true lb in
@@ -124,7 +124,6 @@ and process princ channels is_branch = function
     let rb_bstmts = BStmts(rb_stmts @ (show_branch_return (SExp(Id(ID("c_" ^ ident)))) rb_stmts)) in
     SBranch(Offer(ID("c_" ^ ident), lb_bstmts, rb_bstmts))::process princ channels is_branch local_type
   | LLocalEnd when is_branch -> [SExp(Id(ID("process::exit(1)")))]
-  | LBranchEnd -> []
   | LLocalEnd -> close_channels channels
   | _ -> [End]
 
