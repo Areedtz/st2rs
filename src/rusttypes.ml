@@ -45,12 +45,14 @@ and rust_a_types type_list =
   String.concat "\n" (types)
 
 and channels acc = function
-  Send(sender, receiver, _, _, _, g) | Branch(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
+  Send(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
     channels acc g
-  | Send(sender, receiver, _, _, _, g) | Branch(sender, receiver, _, _, _, g) ->
-    channels ([(receiver, sender);(sender, receiver)]@acc) g
+  | Send(sender, receiver, _, _, _, g) ->
+    channels ([(receiver, sender); (sender, receiver)]@acc) g
   | Compute(_, _, g) -> channels acc g
-  | DefGlobal(_, _, g, g') -> channels (channels acc g) g'
+  | DefGlobal(_, g, g') -> channels (channels acc g) g'
+  | Branch(sender, receiver, _, _, _) when not (List.exists (fun (a, b) -> sender = a && receiver = b) acc) ->
+    [(receiver, sender); (sender, receiver)]@acc
   | _ -> acc
 
 and principal_channels principal channels = 

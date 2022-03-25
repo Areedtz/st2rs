@@ -69,10 +69,10 @@ type query =
 (* Global types: p -> q *)
 type global_type =
     Send of principal * principal * channel_option * ident * term * global_type
-  | Branch of principal * principal * channel_option * global_type * global_type * global_type
+  | Branch of principal * principal * channel_option * global_type * global_type
   | Compute of principal * let_bind * global_type
-  | DefGlobal of ident * ((ident * data_type) * principal) list * global_type * global_type
-  | CallGlobal of ident * term list
+  | DefGlobal of ident * global_type * global_type
+  | CallGlobal of ident
   | GlobalEnd
   | BranchEnd
 
@@ -166,11 +166,11 @@ and show_global_type = function
   Send(p, q, opt, x, t, g) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ "\n" ^ show_global_type g
 | Compute(p, letb, g) ->
   p ^ " {\n" ^ show_let_bind letb ^ "}\n" ^ show_global_type g
-| DefGlobal(name, params, g, g') ->
-  name ^ "("^show_params params^")" ^ show_global_type g ^ "\nin\n"^ show_global_type g'
-| CallGlobal(name, params) ->
-  name ^ "(" ^ show_term_list params ^ ")"
-| Branch(p, q, opt, lb, rb, g) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:" ^ show_global_type lb ^ "\n\tRight:" ^ show_global_type rb ^ "\n}\n" ^ show_global_type g
+| DefGlobal(name, g, g') ->
+  name ^ show_global_type g ^ "\nin\n"^ show_global_type g'
+| CallGlobal(name) ->
+  name ^ "()"
+| Branch(p, q, opt, lb, rb) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:" ^ show_global_type lb ^ "\n\tRight:" ^ show_global_type rb ^ "\n}\n"
 | BranchEnd -> "branch_end\n"
 | GlobalEnd -> "end\n"
 
@@ -178,11 +178,11 @@ and show_global_type_nr = function
   Send(p, q, opt, x, t, _) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ " ..."
 | Compute(p, letb, _) ->
   p ^ " {\n" ^ show_let_bind letb ^ "}...\n"
-| DefGlobal(name, params, g, _) ->
-  name ^ "("^show_params params^")" ^ show_global_type g ^ "\nin...\n"
-| CallGlobal(name, params) ->
-  name ^ "(" ^ show_term_list params ^ ")"
-| Branch(p, q, opt, _, _, _) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:...\n\tRight:...\n}\n"
+| DefGlobal(name, g, _) ->
+  name ^ "()" ^ show_global_type g ^ "\nin...\n"
+| CallGlobal(name) ->
+  name ^ "()"
+| Branch(p, q, opt, _, _) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:...\n\tRight:...\n}\n"
 | BranchEnd -> "branch_end\n"
 | GlobalEnd -> "end\n"
 
@@ -393,19 +393,25 @@ let rec compile principals env forms funs evs princ gt =
        else compile_letb inner_env next
      | LetEnd -> compile principals inner_env forms funs evs princ g in
    compile_letb env letb
- | Branch(s, r, _, lb, rb, g) when princ = s ->
+ | Branch(s, r, _, lb, rb) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(s, r, compile principals env' forms funs evs princ lb, compile principals env' forms funs evs princ rb, List.assoc princ env', compile principals env forms funs evs princ g)
- | Branch(s, r, _, lb, rb, g) when princ = r ->
+   LOffer(s, r, compile principals env' forms funs evs princ lb, compile principals env' forms funs evs princ rb, List.assoc princ env', LLocalEnd)
+ | Branch(s, r, _, lb, rb) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(s, r, compile principals env' forms funs evs princ lb, compile principals env' forms funs evs princ rb, List.assoc princ env', compile principals env forms funs evs princ g)
- | Branch(s, r, _, _, _, g) ->
+   LChoose(s, r, compile principals env' forms funs evs princ lb, compile principals env' forms funs evs princ rb, List.assoc princ env', LLocalEnd)
+ | Branch(s, r, _, _, _) ->
    check_principle_exists principals s; check_principle_exists principals r;
-   compile principals env forms funs evs princ g
+   LLocalEnd
  | BranchEnd -> LBranchEnd
  | _ -> LLocalEnd
+
+and build_global_funs_list = function
+  Send(_, _, _, _, _, gt) -> build_global_funs_list gt
+  | Compute(_, _, gt) -> build_global_funs_list gt
+  | DefGlobal(name, g, gt) -> [(name, g)]::(build_global_funs_list gt)
+  | _ -> []
 
 and build_function_types = function
  (f, (args_t, _, _, _)) -> (f, List.map (fun t -> show_dtype t) args_t)

@@ -180,14 +180,14 @@ let rec build_channels acc = function
       let channel_name = show_channel (if receiver < sender then receiver ^ sender else sender ^ receiver) opt in
       let parties = (sender, receiver) in
       build_channels ((parties, channel_name)::acc) g
-  | Branch(sender, receiver, opt, lb, rb, g) when opt != Public ->
+  | Branch(sender, receiver, opt, lb, rb) when opt != Public ->
       let channel_name = show_channel (if receiver < sender then receiver ^ sender else sender ^ receiver) opt in
       let parties = (sender, receiver) in
-      build_channels ((parties, channel_name)::(build_channels (build_channels acc lb) rb)) g
-  | Branch(sender, receiver, opt, lb, rb, g) ->
-      build_channels (build_channels (build_channels acc lb) rb) g
+      (parties, channel_name)::(build_channels (build_channels acc lb) rb)
+  | Branch(sender, receiver, opt, lb, rb) ->
+      build_channels (build_channels acc lb) rb
   | Send(_, _, _, _, _, g) | Compute(_, _, g) -> build_channels acc g
-  | DefGlobal(_, _, g, g') -> build_channels (build_channels acc g) g'
+  | DefGlobal(_, g, g') -> build_channels (build_channels acc g) g'
   | BranchEnd -> acc
   | _ -> List.sort_uniq (fun (_, a) (_, b) -> compare a b) acc
 
