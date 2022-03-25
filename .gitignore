@@ -30,6 +30,3 @@ _opam/
 
 # Rust target dir
 target/
-
-# Cargo specific files
-Cargo.lock
