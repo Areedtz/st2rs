@@ -93,7 +93,7 @@ let output_principal_channels principal_locals =
     | LSend(_, _, _, _, _, local_type) | LRecv(_, _, _, _, _, local_type) | LNew(_, _, local_type) |
         LLet(_, _, local_type) | LEvent(_, _, local_type) | LChoose(_, _, _, _, local_type) | LOffer(_, _, _, _, local_type) ->
       build_channel local_type s r continue
-    | LLocalEnd -> "Eps" in
+    | LLocalEnd | LCall(_, _) -> "Eps" in
   let rec inner local_types channels = 
     match local_types with
     | LSend(sender, receiver, _, _, _, local_type) | LOffer(sender, receiver, _, _, local_type) ->
@@ -110,7 +110,7 @@ let output_principal_channels principal_locals =
       end
     | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) ->
       inner local_type channels
-    | LLocalEnd -> channels in
+    | LLocalEnd | LCall(_, _) -> channels in
   List.fold_left (fun acc (channel_name, channel) -> acc ^ (sprintf "type %s = %s;\n" channel_name channel)) "" (inner principal_locals [])
 
 and show_knowledge = function
@@ -137,8 +137,8 @@ let rust_output (pr:problem) : unit =
   let function_types = List.map (fun f -> build_function_types f) pr.functions in
   printf "%s\n" (rust_handwritten);
   let channel_pairs = channels [] pr.protocol in
-  let global_funs = build_global_funs_list pr.protocol in  
-  let principal_locals = List.map (fun (p, _) -> (p, (compile pr.principals env pr.formats pr.functions pr.events global_funs p pr.protocol))) pr.principals in
+  let global_funs = build_global_funs_list pr.protocol in
+  let principal_locals = List.map (fun (p, _) -> (p, (compile pr.principals [] env pr.formats pr.functions pr.events global_funs p pr.protocol))) pr.principals in
   List.iter (fun (p, _) -> 
       printf "%s\n" (output_principal_channels (List.assoc p principal_locals))) pr.principals;
   let abstract_types = List.filter_map (function DAType(s1,s2) -> Some(DAType(s1,s2)) | _ -> None) pr.types in

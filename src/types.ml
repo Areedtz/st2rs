@@ -205,6 +205,10 @@ let rec initial_knowledge p e = function
     if p' = p then initial_knowledge p ((t', dt', f')::e) t
     else initial_knowledge p e t
 
+let show_penv penv = sprintf "[\n%s\n]" (String.concat ",\n" (List.map (fun (x, dt) -> sprintf "\t\t{\n\t\t\tName: %s,\n\t\t\tData Type: %s\n\t\t}" x (show_dtype dt)) penv))
+
+let show_env env = String.concat ", " (List.map (fun (p, penv) -> sprintf "{\n\tPrincipal: %s,\n\tEnvironment: %s\n}\n" p (show_penv penv)) env)
+
 let get_penv env p =
   match List.assoc_opt p env with
  | Some(penv) -> penv
@@ -212,7 +216,7 @@ let get_penv env p =
 
 let safe_update p x dt env =
  match List.assoc_opt p env with
- | None -> raise (SyntaxError (sprintf "Principal %s was not found in environment" p))
+ | None -> raise (SyntaxError (sprintf "Principal %s was not found in environment %s" p (String.concat ", " (List.map (fun (p, _) -> p) env))))
  | Some(env_p) -> 
    match List.assoc_opt x env_p with
    | None -> update p ((x, dt)::env_p) env
@@ -220,6 +224,9 @@ let safe_update p x dt env =
      if old_dt <> dt
        then raise (TypeError (sprintf "Variable %s was previously assigned as %s. Cannot be reassigned as %s" x (show_dtype old_dt) (show_dtype dt)))
      else env
+
+let safe_join_envs env1 env2 =
+  List.fold_left (fun acc1 (p, penv) -> List.fold_left (fun acc2 (x, dt) -> safe_update p x dt acc2) acc1 penv) env1 env2
 
 let rec get_term_type env forms funs = function
  | Var(x) -> 
@@ -303,7 +310,7 @@ let rec get_pattern_types env forms funs = function
  | PForm(f, args) ->
    begin
      match List.assoc_opt f forms with
-     | None -> raise (SyntaxError(sprintf "Format %s was not found in format definitions" f))
+     | None -> raise (SyntaxError (sprintf "Format %s was not found in format definitions" f))
      | Some(dtypes) -> 
        let argtypes = List.flatten (List.map (fun arg -> get_pattern_types env forms funs arg) args) in
        let combinetypes = List.combine argtypes dtypes in
@@ -345,24 +352,39 @@ let rec get_last_local_type lt =
   | LEvent (_, _, lt) | LChoose(_, _, lt, _, _) | LOffer(_, _, lt, _, _) -> get_last_local_type lt
   | _ -> lt
 
-let rec compile principals env forms funs evs gfuns princ gt =
+let rec get_free_variables gt princ =
+  match gt with
+ | Send(s, _, _, _, t, g) when princ = s ->
+  (* get variables from t *)::get_free_variables g princ
+ | Send(_, r, _, x, _, _) when princ = r ->
+  
+ | Send(s, r, _, x, t, g) ->
+ | Compute(p, letb, g) ->
+ | Branch(s, r, _, lb, rb) when princ = s ->
+ | Branch(s, r, _, lb, rb) when princ = r ->
+ | Branch(s, r, _, lb, rb) ->
+ | DefGlobal(_, _, g) -> compile principals orig_env env forms funs evs gfuns princ g
+ | CallGlobal(name) when List.length orig_env > 0 -> LCall(name, get_penv (safe_join_envs orig_env env) princ) (* orig_env should be combined with env *)
+ | CallGlobal(name) -> compile principals orig_env env forms funs evs gfuns princ (List.assoc name gfuns)
+ | _ -> LLocalEnd
+
+let rec compile principals orig_env env forms funs evs gfuns princ gt =
  match gt with
  | Send(s, r, opt, x, t, g) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LSend(s, r, opt, t, ttype, compile principals env' forms funs evs gfuns princ g)
+   LSend(s, r, opt, t, ttype, compile principals orig_env env' forms funs evs gfuns princ g)
  | Send(s, r, opt, x, t, g) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   
-   LRecv(s, r, opt, PVar(x, ttype), t, compile principals env' forms funs evs gfuns princ g)
+   LRecv(s, r, opt, PVar(x, ttype), t, compile principals orig_env env' forms funs evs gfuns princ g)
  | Send(s, r, _, x, t, g) ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   compile principals env' forms funs evs gfuns princ g
+   compile principals orig_env env' forms funs evs gfuns princ g
  | Compute(p, letb, g) ->
    check_principle_exists principals p;
    let rec compile_letb inner_env letb =
@@ -400,7 +422,7 @@ let rec compile principals env forms funs evs gfuns princ gt =
        if p = princ then
          LEvent(name, terms, compile_letb inner_env next)
        else compile_letb inner_env next
-     | LetEnd -> compile principals inner_env forms funs evs gfuns princ g in
+     | LetEnd -> compile principals orig_env inner_env forms funs evs gfuns princ g in
    compile_letb env letb
  | Branch(s, r, _, lb, rb) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
@@ -412,10 +434,11 @@ let rec compile principals env forms funs evs gfuns princ gt =
    let next = 
     begin
       match last_global_lb with
-      | CallGlobal(name) -> compile principals env forms funs evs gfuns princ (List.assoc name gfuns)
+      | CallGlobal(name) when List.length orig_env = 0 -> compile principals [] env forms funs evs gfuns princ (List.assoc name gfuns)
       | _ -> LLocalEnd
     end in
-   LOffer(s, r, compile principals env forms funs evs gfuns princ lb, compile principals env forms funs evs gfuns princ rb, next)
+   let passed_env = if List.length orig_env > 0 then orig_env else env in
+   LOffer(s, r, compile principals passed_env env' forms funs evs gfuns princ lb, compile principals passed_env env' forms funs evs gfuns princ rb, next)
  | Branch(s, r, _, lb, rb) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
@@ -426,21 +449,20 @@ let rec compile principals env forms funs evs gfuns princ gt =
    let next = 
     begin
       match last_global_lb with
-      | CallGlobal(name) -> compile principals env forms funs evs gfuns princ (List.assoc name gfuns)
+      | CallGlobal(name) when List.length orig_env = 0 -> compile principals [] env forms funs evs gfuns princ (List.assoc name gfuns)
       | _ -> LLocalEnd
     end in
-   LChoose(s, r, compile principals env forms funs evs gfuns princ lb, compile principals env forms funs evs gfuns princ rb, next)
- | Branch(s, r, _, lb, _) ->
-   check_principle_exists principals s; check_principle_exists principals r;
-   let next = get_last_global_type lb in
-   begin
-    match next with
-    | Branch(_, _, _, _, _) -> compile principals env forms funs evs gfuns princ next
-    | CallGlobal(name) -> compile principals env forms funs evs gfuns princ (List.assoc name gfuns)
-    | _ -> LLocalEnd
-   end
- | DefGlobal(_, _, g) -> compile principals env forms funs evs gfuns princ g
- | CallGlobal(name) -> compile principals env forms funs evs gfuns princ (List.assoc name gfuns)
+   let passed_env = if List.length orig_env > 0 then orig_env else env in
+   LChoose(s, r, compile principals passed_env env' forms funs evs gfuns princ lb, compile principals passed_env env' forms funs evs gfuns princ rb, next)
+ | Branch(s, r, _, lb, rb) ->
+  check_principle_exists principals s; check_principle_exists principals r;
+  let left = compile principals orig_env env forms funs evs gfuns princ lb in
+  let right = compile principals orig_env env forms funs evs gfuns princ rb in
+  if (compare left right) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way"));
+  left
+ | DefGlobal(_, _, g) -> compile principals orig_env env forms funs evs gfuns princ g
+ | CallGlobal(name) when List.length orig_env > 0 -> LCall(name, get_penv (safe_join_envs orig_env env) princ) (* orig_env should be combined with env *)
+ | CallGlobal(name) -> compile principals orig_env env forms funs evs gfuns princ (List.assoc name gfuns)
  | _ -> LLocalEnd
 
  and build_global_funs_list = function

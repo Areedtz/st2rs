@@ -123,6 +123,7 @@ and process princ channels is_branch = function
     let lb_bstmts =  BStmts(lb_stmts @ (show_branch_return (SExp(Id(ID("c_" ^ ident)))) lb_stmts)) in
     let rb_bstmts = BStmts(rb_stmts @ (show_branch_return (SExp(Id(ID("c_" ^ ident)))) rb_stmts)) in
     SBranch(Offer(ID("c_" ^ ident), lb_bstmts, rb_bstmts))::process princ channels is_branch local_type
+  | LCall(name, env) -> [SExp(toFunction (princ ^ name) (Exps(List.map (fun (x, _) -> Id(ID(x))) env)))]
   | LLocalEnd when is_branch -> [SExp(Id(ID("process::exit(1)")))]
   | LLocalEnd -> close_channels channels
   | _ -> [End]
