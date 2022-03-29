@@ -110,22 +110,24 @@ and process princ channels is_branch = function
     let ident = get_channel_name princ sender receiver in
     SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction ("recv") (Id(ID("c_" ^ ident)))))::process princ channels is_branch local_type
   | LEvent (ident, term, local_type) -> process princ channels is_branch local_type
-  | LChoose(sender, receiver, lb, rb, local_type) -> 
+  | LChoose(sender, receiver, lb, rb, nextlb, nextrb) -> 
     let ident = get_channel_name princ sender receiver in
     let sel1 = SDeclExp(DeclExp((ID("c_" ^ ident)), Id(ID("c_" ^ ident ^ ".sel1()")))) in
     let sel2 = SDeclExp(DeclExp((ID("c_" ^ ident)), Id(ID("c_" ^ ident ^ ".sel2()")))) in
-    SBranch(Choose(ID("c_" ^ ident), sel1::process princ channels true lb, sel2::process princ channels true rb))::process princ channels is_branch local_type
-  | LOffer(sender, receiver, lb, rb, local_type) -> 
+    [SBranch(Choose(ID("c_" ^ ident), sel1::((process princ channels true lb)@(process princ channels false nextlb)), sel2::((process princ channels true rb)@(process princ channels false nextrb))))]
+  | LOffer(sender, receiver, lb, rb, nextlb, nextrb) -> 
     let ident = get_channel_name princ sender receiver in
     let branch_channel = List.filter (fun (s, r) -> sender = s && receiver = r) channels in
     let lb_stmts = process princ branch_channel true lb in
     let rb_stmts = process princ branch_channel true rb in
-    let lb_bstmts =  BStmts(lb_stmts @ (show_branch_return (SExp(Id(ID("c_" ^ ident)))) lb_stmts)) in
-    let rb_bstmts = BStmts(rb_stmts @ (show_branch_return (SExp(Id(ID("c_" ^ ident)))) rb_stmts)) in
-    SBranch(Offer(ID("c_" ^ ident), lb_bstmts, rb_bstmts))::process princ channels is_branch local_type
-  | LCall(name, env) -> [SExp(toFunction (princ ^ name) (Exps(List.map (fun (x, _) -> Id(ID(x))) env)))]
-  | LLocalEnd when is_branch -> [SExp(Id(ID("process::exit(1)")))]
+    let lb_next_stmts = process princ branch_channel false nextlb in
+    let rb_next_stmts = process princ branch_channel false nextrb in
+    let lb_bstmts = BStmts(lb_stmts) in
+    let rb_bstmts = BStmts(rb_stmts) in
+    [SBranch(Offer(ID("c_" ^ ident), lb_bstmts, rb_bstmts))]
+  | LLocalEnd when is_branch -> []
   | LLocalEnd -> close_channels channels
+  | LCall(_, _) -> []
   | _ -> [End]
 
 and typedIds t =
