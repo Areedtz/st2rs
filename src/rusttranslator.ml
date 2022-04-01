@@ -84,7 +84,7 @@ and process princ channels = function
     LSend(sender, receiver, opt, t, _, local_type) ->
     let ident = get_channel_name princ sender receiver in
     let send = toFunction "send" (Exps([Id(ID("c_" ^ ident)); translateTerm t])) in
-    SDeclExp(DeclExp(fst(translatePattern (PVar ("c_" ^ ident, None)) []), send))::process princ channels local_type
+    SDeclExp(DeclExp(fst(translatePattern (PVar ("c_" ^ ident, DNone)) []), send))::process princ channels local_type
   | LNew (ident, data_type, local_type) -> (fresh ident data_type)::process princ channels local_type
   | LLet (PForm(fname, args), term, local_type) ->
     let patterns = List.map (fun a -> translatePattern (a) []) args in
