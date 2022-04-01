@@ -36,7 +36,7 @@ let rec show_term = function
   | And(t1, t2) -> show_term t1 ^ " && " ^ show_term t2
   | Or(t1, t2) -> show_term t1 ^ " || " ^ show_term t2
   | Not(t) -> "not(" ^ show_term t ^ ")"
-  | If(cond, tterm, fterm) -> "( if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ " )"
+  | IfAssign(cond, tterm, fterm) -> "( if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ " )"
   | Null -> ""
 
 and show_term_list = function
@@ -144,6 +144,8 @@ and show_local_type p channels prefix = function
       let left = sprintf "%s(\n%s\tlet Left(leftbr) = branchchoice in\n%s\n%s)" prefix prefix (show_local_type p channels (prefix ^ "\t") lb) prefix in
       let right = sprintf "%s(\n%s\tlet Right(rightbr) = branchchoice in\n%s\n%s)" prefix prefix (show_local_type p channels (prefix ^ "\t") rb) prefix in
       sprintf "%sin(c, branchchoice: bitstring);\n%s\n%s|\n%s" prefix left prefix right
+  | LIf(cond, thenb, elseb) ->
+    sprintf "%sif %s then\n%s\n%selse\n%s" prefix (show_term cond) (show_local_type p channels (prefix ^ "\t") thenb) prefix (show_local_type p channels (prefix ^ "\t") elseb)
   | LCall(ident, params, _) ->
     sprintf "%s%s%s(%s)" prefix p ident (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) params)))
   | LLocalEnd -> prefix ^ "0"
@@ -197,7 +199,7 @@ let rec find_branch_functions = function
   | LChoose(_, _, lb, rb) | LOffer(_, _, lb, rb) ->
     find_branch_functions lb @ find_branch_functions rb
   | LSend(_, _, _, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
-  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_branch_functions next
+  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) | LIf(_, _, next) -> find_branch_functions next (* LIF - thenb and elseb will be the same => we can pick any *)
   | LCall(name, params, next) -> find_branch_functions next@[(name, (params, next))]
   | LLocalEnd -> []
 
