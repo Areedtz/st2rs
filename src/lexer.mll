@@ -50,7 +50,7 @@ rule read =
   | "in"     { IN }
   | "end"    { END }
   | "if"     { IF }
-  | "branch_end" { BRANCH_END }
+  | "else"   { ELSE }
   | "dishonest"  { DISHONEST }
   | "Problem"    { PROBLEM }
   | "Principals" { PRINCIPALS }
