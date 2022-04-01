@@ -63,7 +63,7 @@ and printExp tab = function
     | OExp(exp, Equals, exp2) -> printExp tab exp ^ " == " ^  printExp tab exp2
     | OExp(exp, And, exp2) -> printExp tab exp ^ " && " ^ printExp tab exp2
     | OExp(exp, Or, exp2) -> printExp tab exp ^ " || " ^ printExp tab exp2
-    | IfAssign(cond, block1, block2) -> sprintf "if %s %s else %s" (printExp tab cond) (printBlock (tab+1) block1) (printBlock (tab+1) block2)
+    | If(cond, block1, block2) -> sprintf "if %s %s else %s" (printExp tab cond) (printBlock (tab+1) block1) (printBlock (tab+1) block2)
     | Unimplemented -> "unimplemented!()"
 
 and printSDeclExp tab = function

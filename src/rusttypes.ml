@@ -20,7 +20,7 @@ and show_term = function
   | And(t1, t2) -> show_term t1 ^ " & " ^ show_term t2
   | Or(t1, t2) -> show_term t1 ^ " | " ^ show_term t2
   | Not(t) -> "~" ^ show_term t
-  | Null | If(_,_,_) -> ""
+  | Null | IfAssign(_,_,_) -> ""
 
 and show_format name = name ^ enum_func
 

@@ -20,7 +20,7 @@ let rec translateTerm t =
   | And(l, r) -> OExp(translateTerm l, And, translateTerm r)
   | Or(l, r) -> OExp(translateTerm l, Or, translateTerm r)
   | Not(t) -> Id(ID("!" ^ printExp 0 (translateTerm t)))
-  | If(cond, t1, t2) -> IfAssign(translateTerm cond, BStmts([SExp(translateTerm t1)]), BStmts([SExp(translateTerm t2)]))
+  | IfAssign(cond, t1, t2) -> If(translateTerm cond, BStmts([SExp(translateTerm t1)]), BStmts([SExp(translateTerm t2)]))
   | Null -> Id(ID(""))
 
 and combineConditions cons =
