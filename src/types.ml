@@ -26,7 +26,7 @@ type term =
   | And of term * term
   | Or of term * term
   | Not of term
-  | If of term * term * term
+  | IfAssign of term * term * term
   | Null
 
 type tenv = (principal * (ident * data_type) list) list
@@ -49,6 +49,7 @@ type let_bind =
     New of ident * data_type * let_bind
   | Let of pattern * term * let_bind
   | Event of ident * term list * let_bind
+  | IfBlock of term * let_bind * let_bind
   | LetEnd
 
 (* Channel options / Bullet notation *)
@@ -85,6 +86,7 @@ type local_type =
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
   | LCall of ident * (ident * data_type) list * local_type
+  | LIf of term * local_type * local_type
   | LLocalEnd
 
 type problem = { name: ident;
@@ -112,7 +114,7 @@ let rec show_term = function
   | And(t1, t2) -> show_term t1 ^ " & " ^ show_term t2
   | Or(t1, t2) -> show_term t1 ^ " | " ^ show_term t2
   | Not(t) -> "~" ^ show_term t
-  | If(cond, tterm, fterm) -> "if(" ^ show_term cond ^ ", " ^ show_term tterm ^ ", " ^ show_term fterm ^ ")"
+  | IfAssign(cond, tterm, fterm) -> "if(" ^ show_term cond ^ ", " ^ show_term tterm ^ ", " ^ show_term fterm ^ ")"
   | Null -> ""
 
 and get_channel_name sender receiver = if receiver < sender then receiver ^ sender else sender ^ receiver
@@ -279,7 +281,7 @@ let rec get_term_type env forms funs = function
      DType "bool"
  | Not(t) ->
      DType "bool" (* TODO: Consider if we need to check env *)
- | If(cond, t1, t2) -> 
+ | IfAssign(cond, t1, t2) -> 
      let first = get_term_type env forms funs t1 in
      let second = get_term_type env forms funs t2 in
      if first = second then first
@@ -356,7 +358,7 @@ let rec get_term_variables = function
   | Func(_, args) | Form(_, args) | Tuple(args) -> List.flatten (List.map (get_term_variables) args)
   | Eq(t1, t2) | And(t1, t2) | Or(t1, t2) -> List.flatten (List.map (get_term_variables) [t1;t2])
   | Not(t) -> get_term_variables t
-  | If(cond, t1, t2) -> List.flatten (List.map (get_term_variables) [cond; t1;t2])
+  | IfAssign(cond, t1, t2) -> List.flatten (List.map (get_term_variables) [cond; t1;t2])
   | Null -> []
 
 let rec get_pattern_variables = function
@@ -383,6 +385,9 @@ let rec get_free_variables gfuns reserved princ gt acc =
         let newreserved = (List.filter (fun x -> not(List.exists (fun y -> x = y) newacc)) (get_pattern_variables pattern))@reserved in
         inner newreserved next newacc
       | Event(_, terms, next) -> inner reserved next ((List.flatten (List.map (get_term_variables) terms))@acc)
+      | IfBlock(cond, thenb, elseb) ->
+        let newacc = get_term_variables cond@acc in
+        inner reserved thenb (inner reserved elseb newacc)
       | LetEnd -> get_free_variables gfuns reserved princ g acc in
     inner reserved letb acc
  | Compute(_, _, g) -> get_free_variables gfuns reserved princ g acc
@@ -410,13 +415,13 @@ let rec compile principals orig_env env forms funs evs gfuns princ gt =
    compile principals orig_env env' forms funs evs gfuns princ g
  | Compute(p, letb, g) ->
    check_principle_exists principals p;
-   let rec compile_letb inner_env letb =
+   let rec compile_letb inner_env return_type letb =
      match letb with
      | New(name, dt, next) ->
        let inner_env' = safe_update p name dt inner_env in
        if p = princ 
-         then LNew(name, dt, compile_letb inner_env' next)
-         else compile_letb inner_env' next
+         then LNew(name, dt, compile_letb inner_env' return_type next)
+         else compile_letb inner_env' return_type next
      | Let(pattern, term, next) ->
        let ptypes = get_pattern_types (get_penv inner_env p) forms funs pattern in
        let ttype = get_term_type (get_penv inner_env p) forms funs term in
@@ -437,29 +442,49 @@ let rec compile principals orig_env env forms funs evs gfuns princ gt =
          else
            raise (SyntaxError(sprintf "Could not match left hand side of assignment to right hand side of assignment, mismatching number of variables")) in
        if p = princ then 
-         LLet(pattern, term, compile_letb inner_env' next)
+         LLet(pattern, term, compile_letb inner_env' return_type next)
        else 
-         compile_letb inner_env' next
+         compile_letb inner_env' return_type next
      | Event(name, terms, next) ->
        check_event_types (get_penv inner_env p) evs forms funs name terms;
        if p = princ then
-         LEvent(name, terms, compile_letb inner_env next)
-       else compile_letb inner_env next
-     | LetEnd -> compile principals orig_env inner_env forms funs evs gfuns princ g in
-   compile_letb env letb
+         LEvent(name, terms, compile_letb inner_env return_type next)
+       else compile_letb inner_env return_type next
+     | IfBlock(cond, thenb, elseb) ->
+       if p = princ then
+        let penv = get_penv inner_env princ in
+        let free_vars = get_free_variables gfuns [] princ g [] in
+        let free_vars_uniq = List.sort_uniq (fun x y -> compare x y) free_vars in
+        let free_vars_with_types = List.map (fun x -> 
+          match List.assoc_opt x penv with
+          | Some(dt) -> (x, dt)
+          | None -> raise (SyntaxError(sprintf "Could not find variable %s used in function %s in env" x "_Condition"))
+        ) free_vars_uniq in
+        let lcall = LCall("Cond", free_vars_with_types, compile principals orig_env inner_env forms funs evs gfuns princ g) in
+        LIf(cond, compile_letb inner_env (Some(lcall)) thenb, compile_letb inner_env (Some(lcall)) elseb)
+       else compile principals orig_env inner_env forms funs evs gfuns princ g
+      | LetEnd ->
+          begin
+            match return_type with
+            | Some(lcall) -> lcall
+            | None -> compile principals orig_env inner_env forms funs evs gfuns princ g
+          end in
+   compile_letb env None letb
  | Branch(s, r, _, lb, rb) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(s, r, compile principals env env' forms funs evs gfuns princ lb, compile principals env env' forms funs evs gfuns princ rb)
+   let passed_env = if List.length orig_env <> 0 then safe_join_envs orig_env env else env in
+   LOffer(s, r, compile principals passed_env env' forms funs evs gfuns princ lb, compile principals passed_env env' forms funs evs gfuns princ rb)
  | Branch(s, r, _, lb, rb) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(s, r, compile principals env env' forms funs evs gfuns princ lb, compile principals env env' forms funs evs gfuns princ rb)
+   let passed_env = if List.length orig_env <> 0 then safe_join_envs orig_env env else env in (* Updating the original env with the one from a branch and passing it on for the nested branching where it will get filtered again *)
+   LChoose(s, r, compile principals passed_env env' forms funs evs gfuns princ lb, compile principals passed_env env' forms funs evs gfuns princ rb)
  | Branch(s, r, _, lb, rb) ->
     check_principle_exists principals s; check_principle_exists principals r;
     let left = compile principals orig_env env forms funs evs gfuns princ lb in
     let right = compile principals orig_env env forms funs evs gfuns princ rb in
-    if (compare left right) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way")); (* Compare branches for all non-branching parties *)
+    if (compare left right) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way for %s" princ)); (* Compare branches for all non-branching parties *)
     left
  | DefGlobal(name, def, g) -> compile principals orig_env env forms funs evs ((name, def)::gfuns) princ g (* Adding functions as we find them; Even if we have 2 global funcs defined with the same name, we would know which one we are referring to when we have the call *)
  | CallGlobal(name) when List.length orig_env <> 0 -> (* If in a branch - when calling LCall we will pass false if not in a branch *)
