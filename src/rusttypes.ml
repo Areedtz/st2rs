@@ -45,12 +45,14 @@ and rust_a_types type_list =
   String.concat "\n" (types)
 
 and channels acc = function
-  Send(sender, receiver, _, _, _, g) | Branch(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
+  Send(sender, receiver, _, _, _, g) when List.exists (fun (a, b) -> sender = a && receiver = b) acc ->
     channels acc g
-  | Send(sender, receiver, _, _, _, g) | Branch(sender, receiver, _, _, _, g) ->
-    channels ([(receiver, sender);(sender, receiver)]@acc) g
+  | Send(sender, receiver, _, _, _, g) ->
+    channels ([(receiver, sender); (sender, receiver)]@acc) g
   | Compute(_, _, g) -> channels acc g
-  | DefGlobal(_, _, g, g') -> channels (channels acc g) g'
+  | DefGlobal(_, g, g') -> channels (channels acc g) g'
+  | Branch(sender, receiver, _, _, _) when not (List.exists (fun (a, b) -> sender = a && receiver = b) acc) ->
+    [(receiver, sender); (sender, receiver)]@acc
   | _ -> acc
 
 and principal_channels principal channels = 
@@ -82,34 +84,31 @@ let output_principal_channels principal_locals =
         | PVar(_, dt) -> "Recv<Repr<" ^ show_dtype dt ^ ">, " ^ build_channel local_type s r continue ^ ">"
         | _ -> raise (TypeError ("LRecv pattern should always be a PVar"))
       end
-    | LChoose(sender, receiver, lb, rb, _, local_type) when sender = r && receiver = s ->
-      let continue_type = build_channel local_type s r continue in
-      "Choose<" ^ build_channel lb s r continue_type ^ ", " ^ build_channel rb s r continue_type ^ ">"
-    | LOffer(sender, receiver, lb, rb, _, local_type) when sender = s && receiver = r ->
-      let continue_type = build_channel local_type s r continue in
-      "Offer<" ^ build_channel lb s r continue_type ^ ", " ^ build_channel rb s r continue_type ^ ">"
+    | LChoose(sender, receiver, lb, rb) when sender = r && receiver = s ->
+      "Choose<" ^ build_channel lb s r continue ^ ", " ^ build_channel rb s r continue ^ ">"
+    | LOffer(sender, receiver, lb, rb) when sender = s && receiver = r ->
+      "Offer<" ^ build_channel lb s r continue ^ ", " ^ build_channel rb s r continue ^ ">"
     | LSend(_, _, _, _, _, local_type) | LRecv(_, _, _, _, _, local_type) | LNew(_, _, local_type) |
-        LLet(_, _, local_type) | LEvent(_, _, local_type) | LChoose(_, _, _, _, _, local_type) | LOffer(_, _, _, _, _, local_type) ->
+        LLet(_, _, local_type) | LEvent(_, _, local_type) | LOffer(_, _, local_type, _) | LChoose(_, _, local_type, _) | LCall(_, _, local_type) -> (* For non-branching principles, so used to pick either local_type_lb or local_type_rb for LChoose and LOffer (they will be the same), now we are just passing next *)
       build_channel local_type s r continue
-    | LBranchEnd -> continue
     | LLocalEnd -> "Eps" in
   let rec inner local_types channels = 
     match local_types with
-    | LSend(sender, receiver, _, _, _, local_type) | LOffer(sender, receiver, _, _, _, local_type) ->
+    | LSend(sender, receiver, _, _, _, local_type) | LRecv(receiver, sender, _, _, _, local_type)  -> (* s & r are flipped in LRecv *)
       begin
         match List.assoc_opt (sender ^ receiver) channels with
         | Some(_) -> inner local_type channels
         | None -> inner local_type ((sender ^ receiver, build_channel local_types sender receiver "") :: channels)
       end
-    | LRecv(sender, receiver, _, _, _, local_type) | LChoose(sender, receiver, _, _, _, local_type) ->
+    | LOffer(sender, receiver, local_type_lb, local_type_rb) | LChoose(receiver, sender, local_type_lb, local_type_rb) -> (* s & r are flipped in LChoose *) (* Check what is inside the branches so we discover if we have LCalls refering to G, as in G we might have new channels created *)
       begin
-        match List.assoc_opt (receiver ^ sender) channels with
-        | Some(_) -> inner local_type channels
-        | None -> inner local_type ((receiver ^ sender, build_channel local_types receiver sender "") :: channels)
+        match List.assoc_opt (sender ^ receiver) channels with
+        | Some(_) -> inner local_type_rb (inner local_type_lb channels)
+        | None -> inner local_type_rb (inner local_type_lb ((sender ^ receiver, build_channel local_types sender receiver "") :: channels))
       end
-    | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) ->
+    | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) | LCall(_, _, local_type) ->
       inner local_type channels
-    | LLocalEnd | LBranchEnd -> channels in
+    | LLocalEnd -> channels in
   List.fold_left (fun acc (channel_name, channel) -> acc ^ (sprintf "type %s = %s;\n" channel_name channel)) "" (inner principal_locals [])
 
 and show_knowledge = function
@@ -136,7 +135,8 @@ let rust_output (pr:problem) : unit =
   let function_types = List.map (fun f -> build_function_types f) pr.functions in
   printf "%s\n" (rust_handwritten);
   let channel_pairs = channels [] pr.protocol in
-  let principal_locals = List.map (fun (p, _) -> (p, (compile pr.principals env pr.formats pr.functions pr.events p pr.protocol))) pr.principals in
+  let global_funs = build_global_funs_list pr.protocol in
+  let principal_locals = List.map (fun (p, _) -> (p, (compile pr.principals [] env pr.formats pr.functions pr.events global_funs p pr.protocol))) pr.principals in
   List.iter (fun (p, _) -> 
       printf "%s\n" (output_principal_channels (List.assoc p principal_locals))) pr.principals;
   let abstract_types = List.filter_map (function DAType(s1,s2) -> Some(DAType(s1,s2)) | _ -> None) pr.types in

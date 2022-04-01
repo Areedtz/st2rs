@@ -148,16 +148,14 @@ channel_option:
 global_type:
 | prin1 = ID; chan = channel_option; prin2 = ID; COLON; x = ID; EQ; t = term; gt = global_type
   { Send(prin1, prin2, chan, x, t, gt ) }
-| prin1 = ID; chan = channel_option; prin2 = ID; LEFT_BRACE; ID; COLON; lb = global_type; ID; COLON; rb = global_type; RIGHT_BRACE; gt = global_type
-  { Branch(prin1, prin2, chan, lb, rb, gt) }
+| prin1 = ID; chan = channel_option; prin2 = ID; LEFT_BRACE; ID; COLON; lb = global_type; ID; COLON; rb = global_type; RIGHT_BRACE;
+  { Branch(prin1, prin2, chan, lb, rb) }
 | prin = ID; LEFT_BRACE; lb = let_bind; RIGHT_BRACE; gt = global_type
   { Compute(prin, lb, gt) }
-| LET; name = ID; LEFT_PAR; params = separated_list(COMMA, param); RIGHT_PAR; EQ; gt1 = global_type; IN; gt2 = global_type
-  { DefGlobal(name, params, gt1, gt2) }
-| name = ID; LEFT_PAR; args = term_list; RIGHT_PAR
-  { CallGlobal(name, args) }
-| BRANCH_END
-  { BranchEnd }
+| LET; name = ID; EQ; LEFT_BRACE; gt1 = global_type; RIGHT_BRACE; IN; gt2 = global_type
+  { DefGlobal(name, gt1, gt2) }
+| name = ID; LEFT_PAR; RIGHT_PAR
+  { CallGlobal(name) }
 | END
   { GlobalEnd };
 

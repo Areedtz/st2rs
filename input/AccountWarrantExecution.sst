@@ -50,7 +50,45 @@ Source -> Public: mpkform = PKIBEFORM<mpk>
 Court -> Public: pkaform = PKFORM<pka>
 Decryptor -> Public: pkcform = PKFORM<pkc>
 Auditor -> Public: pkdform = PKFORM<pkd>
-
+let G = {
+    Court {
+        new r: rand;
+        let ctc = enc(pka, id, r);
+        let signed_ctc = sign(skc, ctc);
+    }
+    Court *->* Auditor: ctcsign = signed_ctc
+    Court {
+        new r2: rand;
+        let audit = enc(pka, encwrap(id, r), r2);
+        let signed_audit = sign(skc, audit);
+        let b = blind(id, r);
+    }
+    Court *->* Decryptor: drequest = <b, pzk(id, r), signed_ctc, signed_audit, pzkenc(id, r)>
+    Decryptor {
+        let <b: bytes, pzk: bytes, signed_ctc: bytes, signed_audit: bytes, pzkenc: bytes> = drequest;
+        let ctc = checksign(signed_ctc, pkc);
+        let audit = checksign(signed_audit, pkc);
+        new p: bytes;
+        let partial = if(checkzkpokenc(ctc, pzkenc) = OK() & checkzkpok(b, pzk) = OK(), pextract(msk, b), p);
+        let dsign = sign(skd, signwrap(audit, ctc, pzkenc));
+    }
+    Decryptor *->* Court: partial = partial
+    Decryptor *->* Auditor: dsign = dsign
+    Court {
+        let sk = bextract(r, partial);
+        let m = decibe(ct, sk);
+        event OkCourt();
+    }
+    Auditor -> Public: auditableproof1 = <ctcsign, dsign>
+    Auditor {
+        let ctc = checksign(ctcsign, pkc);
+        let id_ctc = dec(ska, ctc);
+        let <audit: bytes, ctcd: bytes, zkenc: bytes> = signunwrap(checksign(dsign, pkd));
+        let <id_audit: bytes, r: rand> = encunwrap(dec(ska, audit));
+    }
+    Auditor -> Public: auditableproof2 = <audit, ctcd, zkenc>
+    end
+} in
 Source {
     let ct = encibe(mpk, id, msg);
 }
@@ -58,43 +96,12 @@ Source *->* Court: ct = ct
 Source -> Public: ct = ct
 Court -> Judge {
     Left:
-        branch_end
+        Judge -> Court {
+            Left:
+                G()
+            Right: end
+        }
+        end
     Right: end
 }
-Court {
-    new r: rand;
-    let ctc = enc(pka, id, r);
-    let signed_ctc = sign(skc, ctc);
-}
-Court *->* Auditor: ctcsign = signed_ctc
-Court {
-    new r2: rand;
-    let audit = enc(pka, encwrap(id, r), r2);
-    let signed_audit = sign(skc, audit);
-    let b = blind(id, r);
-}
-Court *->* Decryptor: drequest = <b, pzk(id, r), signed_ctc, signed_audit, pzkenc(id, r)>
-Decryptor {
-    let <b: bytes, pzk: bytes, signed_ctc: bytes, signed_audit: bytes, pzkenc: bytes> = drequest;
-    let ctc = checksign(signed_ctc, pkc);
-    let audit = checksign(signed_audit, pkc);
-    new p: bytes;
-    let partial = if(checkzkpokenc(ctc, pzkenc) = OK() & checkzkpok(b, pzk) = OK(), pextract(msk, b), p);
-    let dsign = sign(skd, signwrap(audit, ctc, pzkenc));
-}
-Decryptor *->* Court: partial = partial
-Decryptor *->* Auditor: dsign = dsign
-Court {
-    let sk = bextract(r, partial);
-    let m = decibe(ct, sk);
-    event OkCourt();
-}
-Auditor -> Public: auditableproof1 = <ctcsign, dsign>
-Auditor {
-    let ctc = checksign(ctcsign, pkc);
-    let id_ctc = dec(ska, ctc);
-    let <audit: bytes, ctcd: bytes, zkenc: bytes> = signunwrap(checksign(dsign, pkd));
-    let <id_audit: bytes, r: rand> = encunwrap(dec(ska, audit));
-}
-Auditor -> Public: auditableproof2 = <audit, ctcd, zkenc>
 end
