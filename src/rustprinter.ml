@@ -79,8 +79,7 @@ and printBlock tab = function
         | SBranch(_) -> printStatements tab s
         | _ -> printStatements tab s ^ ";"
       ) lst) in
-      ("{\n" ^ tabulate tab) ^ String.sub s 0 ((String.length s) - 1)
-       ^ ("\n" ^ tabulate (tab - 1)  ^ "}")
+      ("{\n" ^ tabulate tab) ^ s ^ ("\n" ^ tabulate (tab - 1)  ^ "}")
 
 and printType = function
     U8 -> "u8"
@@ -130,8 +129,8 @@ and printBranch tab = function
   | Choose(rid, lb, rb) ->
     let id = printrId rid in
     let comment = sprintf "// Need to make a choice on %s. Either %s.sel1() or %s.sel2()\n" id id id in
-    let left = sprintf "%s/*\n%s\n%s*/\n" (tabulate tab) (printStmtList tab lb) (tabulate tab) in
-    let right = sprintf "%s/*\n%s\n%s*/\n" (tabulate tab) (printStmtList tab rb) (tabulate tab) in
+    let left = sprintf "%s/*\n%s;\n%s*/\n" (tabulate tab) (printStmtList tab lb) (tabulate tab) in
+    let right = sprintf "%s/*\n%s;\n%s*/" (tabulate tab) (printStmtList tab rb) (tabulate tab) in
     sprintf "%s%s\n%s" comment left right
 
 and printStatements tab = function
