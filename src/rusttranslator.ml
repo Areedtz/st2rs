@@ -80,54 +80,50 @@ and show_branch_return call stmts =
         | _ -> [call]
       end
 
-and process princ channels is_branch = function
+and process princ channels = function
     LSend(sender, receiver, opt, t, _, local_type) ->
     let ident = get_channel_name princ sender receiver in
     let send = toFunction "send" (Exps([Id(ID("c_" ^ ident)); translateTerm t])) in
-    SDeclExp(DeclExp(fst(translatePattern (PVar ("c_" ^ ident, None)) []), send))::process princ channels is_branch local_type
-  | LNew (ident, data_type, local_type) -> (fresh ident data_type)::process princ channels is_branch local_type
+    SDeclExp(DeclExp(fst(translatePattern (PVar ("c_" ^ ident, None)) []), send))::process princ channels local_type
+  | LNew (ident, data_type, local_type) -> (fresh ident data_type)::process princ channels local_type
   | LLet (PForm(fname, args), term, local_type) ->
     let patterns = List.map (fun a -> translatePattern (a) []) args in
     let conditions = List.flatten(List.map (fun x -> snd(x)) patterns) in
     let pats = List.map (fun x-> fst(x)) patterns in
     let strPtn = StructPattern(ID(fname), pats) in
-    if(conditions = []) then SDeclExp(PatrExp(strPtn, translateTerm term))::process princ channels is_branch local_type
-    else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels is_branch local_type)))]
+    if(conditions = []) then SDeclExp(PatrExp(strPtn, translateTerm term))::process princ channels local_type
+    else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type)))]
   | LLet (PMatch(mat), term, local_type) ->
-    [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process princ channels is_branch local_type)))]
+    [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process princ channels local_type)))]
   | LLet (ident, term, local_type) ->
     let patterns = translatePattern ident [] in
     let conditions = snd(patterns) in
     if(conditions = []) then begin
-      SDeclExp(DeclExp(fst(patterns), translateTerm term))::process princ channels is_branch local_type end
+      SDeclExp(DeclExp(fst(patterns), translateTerm term))::process princ channels local_type end
     else begin
-      [SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels is_branch local_type)))]
+      [SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type)))]
     end
   | LRecv (sender, receiver, opt, PVar(x, _), term, LLet (PForm(fname, args), Var(xx), local_type)) ->
     let ident = get_channel_name princ sender receiver in
-    SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction "recv" (Id(ID("c_" ^ ident)))))::SDeclExp(PatrExp(toStructPattern fname args, Id(ID(xx))))::process princ channels is_branch local_type
+    SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction "recv" (Id(ID("c_" ^ ident)))))::SDeclExp(PatrExp(toStructPattern fname args, Id(ID(xx))))::process princ channels local_type
   | LRecv (sender, receiver, opt, PVar(x, _), term, local_type) -> 
     let ident = get_channel_name princ sender receiver in
-    SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction ("recv") (Id(ID("c_" ^ ident)))))::process princ channels is_branch local_type
-  | LEvent (ident, term, local_type) -> process princ channels is_branch local_type
-  | LChoose(sender, receiver, lb, rb, nextlb, nextrb) -> 
+    SDeclExp(DeclExp((ID("(c_" ^ ident ^ ", " ^ x ^ ")")), toFunction ("recv") (Id(ID("c_" ^ ident)))))::process princ channels local_type
+  | LEvent (ident, term, local_type) -> process princ channels local_type
+  | LChoose(sender, receiver, lb, rb) -> 
     let ident = get_channel_name princ sender receiver in
     let sel1 = SDeclExp(DeclExp((ID("c_" ^ ident)), Id(ID("c_" ^ ident ^ ".sel1()")))) in
     let sel2 = SDeclExp(DeclExp((ID("c_" ^ ident)), Id(ID("c_" ^ ident ^ ".sel2()")))) in
-    [SBranch(Choose(ID("c_" ^ ident), sel1::((process princ channels true lb)@(process princ channels false nextlb)), sel2::((process princ channels true rb)@(process princ channels false nextrb))))]
-  | LOffer(sender, receiver, lb, rb, nextlb, nextrb) -> 
+    [SBranch(Choose(ID("c_" ^ ident), sel1::((process princ channels lb)), sel2::((process princ channels rb))))]
+  | LOffer(sender, receiver, lb, rb) -> 
     let ident = get_channel_name princ sender receiver in
-    let branch_channel = List.filter (fun (s, r) -> sender = s && receiver = r) channels in
-    let lb_stmts = process princ branch_channel true lb in
-    let rb_stmts = process princ branch_channel true rb in
-    let lb_next_stmts = process princ branch_channel false nextlb in
-    let rb_next_stmts = process princ branch_channel false nextrb in
+    let lb_stmts = process princ channels lb in
+    let rb_stmts = process princ channels rb in
     let lb_bstmts = BStmts(lb_stmts) in
     let rb_bstmts = BStmts(rb_stmts) in
     [SBranch(Offer(ID("c_" ^ ident), lb_bstmts, rb_bstmts))]
-  | LLocalEnd when is_branch -> []
   | LLocalEnd -> close_channels channels
-  | LCall(_, _) -> []
+  | LCall(_, _, local_type) -> process princ channels local_type (* Compiling from Local Types to Rust Types *)
   | _ -> [End]
 
 and typedIds t =
@@ -181,4 +177,4 @@ let rec translateChannels principal channels acc =
       translateChannels principal c (TypedID(ID("c_" ^ s ^ r), Custom("Chan<(), " ^ s ^ r ^ ">")) :: acc)
     else translateChannels principal c acc
 
-let rust_process channels knowledge principal proc = (printStatements 0 (SFunction(Function(ID(String.lowercase_ascii principal), TypedIDs(translateChannels principal channels [] @ translateKnowledge principal knowledge []), Empty, (BStmts(process principal channels false proc))))))
+let rust_process channels knowledge principal proc = (printStatements 0 (SFunction(Function(ID(String.lowercase_ascii principal), TypedIDs(translateChannels principal channels [] @ translateKnowledge principal knowledge []), Empty, (BStmts(process principal channels proc))))))
