@@ -116,7 +116,7 @@ pattern:
 | LEFT_PAR; p = pattern; RIGHT_PAR 
   { p }
 | name = ID
-  { PVar(name, None) }
+  { PVar(name, DNone) }
 | name = ID; COLON; dt = data_type
   { PVar(name, dt) }
 | PCT; t = term
@@ -139,6 +139,8 @@ let_bind:
   { Event(name, ts, letb) }
 | IF; LEFT_PAR; cond = term; RIGHT_PAR; LEFT_BRACE; then_body = let_bind; RIGHT_BRACE; ELSE; LEFT_BRACE; else_body = let_bind; RIGHT_BRACE
   { IfBlock(cond, then_body, else_body) }
+| IF; LEFT_PAR; cond = term; RIGHT_PAR; LEFT_BRACE; then_body = let_bind; RIGHT_BRACE
+  { IfBlock(cond, then_body, LetEnd) }
 | { LetEnd };
 
 channel_option:
