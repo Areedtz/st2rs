@@ -167,11 +167,13 @@ knowledge ->
       | Null -> -1
       | _ -> 1
       ) uniq_vars in
-    (String.concat "\n" (List.map (fun (name, dtype, func) -> 
-      match func with
-      | Null -> "\tnew " ^ name ^ ": " ^ show_dtype dtype ^ ";"
-      | _ -> "\tlet " ^ name ^ " = " ^ show_term func ^ " in"
-      ) sorted) ^ "\n")
+    if List.length sorted <> 0 then
+      (String.concat "\n" (List.map (fun (name, dtype, func) -> 
+        match func with
+        | Null -> "\tnew " ^ name ^ ": " ^ show_dtype dtype ^ ";"
+        | _ -> "\tlet " ^ name ^ " = " ^ show_term func ^ " in"
+        ) sorted) ^ "\n\n")
+      else ""
 
 and show_party_params = function
   params -> List.map (fun (name, dtype, _) -> name ^ ": " ^ show_dtype dtype) params
@@ -222,7 +224,11 @@ let proverif (pr:problem): unit =
   let function_types = List.map (fun f -> build_function_types f) pr.functions in
   let event_types = List.map (fun e -> build_event_types e) pr.events in
   let channels = build_channels [] pr.protocol in
-  let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
+  let channel_inits = 
+    if List.length channels <> 0 then
+      String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) ^ "\n" 
+    else 
+      "" in
   let locals = List.map (fun (p, _) -> (p, (compile pr.principals "" [] env pr.formats pr.functions pr.events [] p pr.protocol))) pr.principals in
   printf  "(* Protocol: %s *)\n\n" pr.name;
   printf "free c: channel.\n\n%s\n\n" "fun Left(bitstring): bitstring [data].\nfun Right(bitstring): bitstring [data].";
@@ -247,4 +253,4 @@ let proverif (pr:problem): unit =
   List.iter (fun (p, plocals) ->
     printf "%s" (find_and_print_branch_functions channels plocals p)) locals;
   List.iter (fun (p, b) -> printf "let %s(%s) = \n%s.\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type p channels "\t" (List.assoc p locals))) pr.principals;
-  printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))
+  printf "process (\n%s%s\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))
