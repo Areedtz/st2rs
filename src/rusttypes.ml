@@ -89,7 +89,8 @@ let output_principal_channels principal_locals =
     | LOffer(sender, receiver, lb, rb) when sender = s && receiver = r ->
       "Offer<" ^ build_channel lb s r continue ^ ", " ^ build_channel rb s r continue ^ ">"
     | LSend(_, _, _, _, _, local_type) | LRecv(_, _, _, _, _, local_type) | LNew(_, _, local_type) |
-        LLet(_, _, local_type) | LEvent(_, _, local_type) | LOffer(_, _, local_type, _) | LChoose(_, _, local_type, _) | LCall(_, _, local_type) -> (* For non-branching principles, so used to pick either local_type_lb or local_type_rb for LChoose and LOffer (they will be the same), now we are just passing next *)
+      LLet(_, _, local_type) | LEvent(_, _, local_type) | LOffer(_, _, local_type, _) | 
+      LChoose(_, _, local_type, _) | LCall(_, _, local_type) | LIf(_, local_type, _) -> (* For non-branching principles, so used to pick either local_type_lb or local_type_rb for LChoose and LOffer (they will be the same), now we are just passing next *)
       build_channel local_type s r continue
     | LLocalEnd -> "Eps" in
   let rec inner local_types channels = 
@@ -106,7 +107,7 @@ let output_principal_channels principal_locals =
         | Some(_) -> inner local_type_rb (inner local_type_lb channels)
         | None -> inner local_type_rb (inner local_type_lb ((sender ^ receiver, build_channel local_types sender receiver "") :: channels))
       end
-    | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) | LCall(_, _, local_type) ->
+    | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) | LCall(_, _, local_type) | LIf(_, local_type, _) ->
       inner local_type channels
     | LLocalEnd -> channels in
   List.fold_left (fun acc (channel_name, channel) -> acc ^ (sprintf "type %s = %s;\n" channel_name channel)) "" (inner principal_locals [])

@@ -275,17 +275,30 @@ let rec get_term_type env forms funs = function
      | None -> raise (SyntaxError ("Form " ^ f ^ " doesn't exist in forms"))
    end
  | Tuple(args) -> DTType(List.map (fun t -> get_term_type env forms funs t) args)
- | Eq(t1, t2) ->
-     DType "bool" (* TODO: Consider checking types of t1 and t2 *)
- | And(t1, t2) | Or(t1, t2) ->
-     DType "bool"
+ | Eq(t1, t2) | And(t1, t2) | Or(t1, t2) ->
+    let first = get_term_type env forms funs t1 in
+    let second = get_term_type env forms funs t2 in
+    if first = second 
+      then DType "bool"
+      else raise (TypeError (sprintf "Variable type %s doesn't match %s in condition check" (show_dtype first) (show_dtype second)))
  | Not(t) ->
-     DType "bool" (* TODO: Consider if we need to check env *)
- | IfAssign(cond, t1, t2) -> 
-     let first = get_term_type env forms funs t1 in
-     let second = get_term_type env forms funs t2 in
-     if first = second then first
-     else raise (TypeError ("t1 and t2 are not of the same type in if-assignment"))
+    let term_type = get_term_type env forms funs t in
+    begin
+      match term_type with
+      | DType(b) when b = "bool" -> DType "bool"
+      | _ ->  raise (TypeError (sprintf "Variable type %s doesn't match bool in negation" (show_dtype term_type)))
+    end
+ | IfAssign(cond, t1, t2) ->
+    let cond_type = get_term_type env forms funs cond in
+    begin
+      match cond_type with
+      | DType(b) when b = "bool" -> 
+        let first = get_term_type env forms funs t1 in
+        let second = get_term_type env forms funs t2 in
+        if first = second then first
+        else raise (TypeError ("t1 and t2 are not of the same type in if-assignment"))
+      | _ ->  raise (TypeError (sprintf "Variable type %s doesn't match bool in if condition" (show_dtype cond_type)))
+    end
  | Null -> DNone
      
 let rec get_pattern_types env forms funs = function
@@ -451,6 +464,7 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
          LEvent(name, terms, compile_letb inner_env return_type next)
        else compile_letb inner_env return_type next
      | IfBlock(cond, thenb, elseb) ->
+       get_term_type (get_penv inner_env p) forms funs cond;
        if p = princ then
         let penv = get_penv inner_env princ in
         let free_vars = get_free_variables gfuns [] princ g [] in
