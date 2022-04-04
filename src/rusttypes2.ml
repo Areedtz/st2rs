@@ -49,7 +49,7 @@ and exp =
   | Unimplemented
 
 and ifStatement =
-  | If of exp * block
+  | If of exp * block * block
 
 and branchStatement =
   | Offer of rId * block * block

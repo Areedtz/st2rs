@@ -92,16 +92,16 @@ and process princ channels = function
     let pats = List.map (fun x-> fst(x)) patterns in
     let strPtn = StructPattern(ID(fname), pats) in
     if(conditions = []) then SDeclExp(PatrExp(strPtn, translateTerm term))::process princ channels local_type
-    else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type)))]
+    else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type), Empty))]
   | LLet (PMatch(mat), term, local_type) ->
-    [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process princ channels local_type)))]
+    [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process princ channels local_type), Empty))]
   | LLet (ident, term, local_type) ->
     let patterns = translatePattern ident [] in
     let conditions = snd(patterns) in
     if(conditions = []) then begin
       SDeclExp(DeclExp(fst(patterns), translateTerm term))::process princ channels local_type end
     else begin
-      [SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type)))]
+      [SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type), Empty))]
     end
   | LRecv (sender, receiver, opt, PVar(x, _), term, LLet (PForm(fname, args), Var(xx), local_type)) ->
     let ident = get_channel_name princ sender receiver in
@@ -122,6 +122,8 @@ and process princ channels = function
     let lb_bstmts = BStmts(lb_stmts) in
     let rb_bstmts = BStmts(rb_stmts) in
     [SBranch(Offer(ID("c_" ^ ident), lb_bstmts, rb_bstmts))]
+  | LIf(cond, thenb, elseb) ->
+    [SIfStatement(If(translateTerm cond, BStmts(process princ channels thenb), BStmts(process princ channels elseb)))]
   | LLocalEnd -> close_channels channels
   | LCall(_, _, local_type) -> process princ channels local_type (* Compiling from Local Types to Rust Types *)
   | _ -> [End]

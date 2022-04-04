@@ -114,8 +114,10 @@ and printFunction = function
 
 and printFunctions funs = String.concat "\n" (List.map (fun f-> printFunction f) funs)
 
-and printIf tab st block =
-  "if " ^ printExp tab st  ^ " " ^ printBlock (tab+1) block
+and printIf tab ifst =
+  match ifst with
+  | If(cond, thenb, Empty) -> "if " ^ printExp tab cond ^ " " ^ printBlock (tab+1) thenb
+  | If(cond, thenb, elseb) -> "if " ^ printExp tab cond ^ " " ^ printBlock (tab+1) thenb ^ " else " ^ printBlock (tab+1) elseb
 
 and printStmtList tab lst = tabulate tab ^ String.concat (";\n" ^ (tabulate tab)) (List.map (fun s -> printStatements tab s) lst)
 
@@ -138,6 +140,6 @@ and printStatements tab = function
     | SBlock(block) -> printBlock tab block
     | SExp(exp) -> printExp tab exp
     | SFunction(rFunction) -> printFunction rFunction
-    | SIfStatement(If(st, block)) -> printIf tab st block
+    | SIfStatement(ifStatement) -> printIf tab ifStatement
     | SBranch(branch) -> printBranch tab branch
     | End -> ""
