@@ -41,9 +41,12 @@ and translatePattern pat (conditions : (term * term) list) =
   | PMatch(t) ->
       let var = next_var() in
       (ID(var), (t, Var(var))::conditions)
-  | PTuple(args) -> 
-    let pargs = String.concat ", " (List.map (fun p -> printrId (fst (translatePattern p conditions))) args) in
-    (ID("(" ^ pargs ^ ")"), conditions)
+  | PTuple(args) ->
+    let res = List.fold_left (fun acc p -> 
+      let pattern = translatePattern p conditions in
+      (fst(acc)@[(printrId (fst(pattern)))], snd(acc)@snd(pattern))) ([], []) args in
+    let pargs = String.concat ", " (fst(res)) in
+    (ID("(" ^ pargs ^ ")"), snd(res))
 
 and translateArgs args =
   Exps( (List.map (fun a -> translateTerm a) args))
@@ -101,7 +104,7 @@ and process princ channels = function
     if(conditions = []) then begin
       SDeclExp(DeclExp(fst(patterns), translateTerm term))::process princ channels local_type end
     else begin
-      [SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type), Empty))]
+      SDeclExp(DeclExp(fst(patterns), translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type), Empty))]
     end
   | LRecv (sender, receiver, opt, PVar(x, _), term, LLet (PForm(fname, args), Var(xx), local_type)) ->
     let ident = get_channel_name princ sender receiver in
