@@ -162,6 +162,3 @@ global_type:
   { CallGlobal(name) }
 | END
   { GlobalEnd };
-
-param:
-| x = ID; COLON; dt = data_type; AT; p = ID { ((x, dt), p) }

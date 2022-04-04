@@ -150,40 +150,11 @@ and show_dtype t =
   | DFType dtype -> dtype
   | _ -> ""
 
-and show_let_bind = function
-    New(name, data_type, letb) -> "  " ^ "new " ^ name ^ ";\n" ^ show_let_bind letb
-  | Let(p, t, letb) -> "let " ^ show_pattern p ^ " = " ^ show_term t ^ " in\n" ^ show_let_bind letb
-  | Event(f, args, letb) -> "event " ^ f ^ "("^ show_term_list args ^ ")\n" ^ show_let_bind letb
-  | LetEnd -> ""
-
 and show_channel_option = function
     Public   -> " -> "
   | Auth     -> " *-> "
   | Conf     -> " ->* "
   | AuthConf -> " *->* "
-
-(* Show global types *)
-and show_global_type = function
-  Send(p, q, opt, x, t, g) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ "\n" ^ show_global_type g
-| Compute(p, letb, g) ->
-  p ^ " {\n" ^ show_let_bind letb ^ "}\n" ^ show_global_type g
-| DefGlobal(name, g, g') ->
-  name ^ show_global_type g ^ "\nin\n"^ show_global_type g'
-| CallGlobal(name) ->
-  name ^ "()"
-| Branch(p, q, opt, lb, rb) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:" ^ show_global_type lb ^ "\n\tRight:" ^ show_global_type rb ^ "\n}\n"
-| GlobalEnd -> "end\n"
-
-and show_global_type_nr = function
-  Send(p, q, opt, x, t, _) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ " ..."
-| Compute(p, letb, _) ->
-  p ^ " {\n" ^ show_let_bind letb ^ "}...\n"
-| DefGlobal(name, g, _) ->
-  name ^ "()" ^ show_global_type g ^ "\nin...\n"
-| CallGlobal(name) ->
-  name ^ "()"
-| Branch(p, q, opt, _, _) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:...\n\tRight:...\n}\n"
-| GlobalEnd -> "end\n"
 
 and show_params = function
   [] -> ""
@@ -464,7 +435,7 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
          LEvent(name, terms, compile_letb inner_env return_type next)
        else compile_letb inner_env return_type next
      | IfBlock(cond, thenb, elseb) ->
-       get_term_type (get_penv inner_env p) forms funs cond;
+       let _ = get_term_type (get_penv inner_env p) forms funs cond in
        if p = princ then
         let penv = get_penv inner_env princ in
         let free_vars = get_free_variables gfuns [] princ g [] in

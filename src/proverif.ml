@@ -223,7 +223,6 @@ let proverif (pr:problem): unit =
   let event_types = List.map (fun e -> build_event_types e) pr.events in
   let channels = build_channels [] pr.protocol in
   let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
-  let global_funs = build_global_funs_list pr.protocol in
   let locals = List.map (fun (p, _) -> (p, (compile pr.principals "" [] env pr.formats pr.functions pr.events [] p pr.protocol))) pr.principals in
   printf  "(* Protocol: %s *)\n\n" pr.name;
   printf "free c: channel.\n\n%s\n\n" "fun Left(bitstring): bitstring [data].\nfun Right(bitstring): bitstring [data].";
