@@ -128,7 +128,7 @@ and show_knowledge = function
         ) sorted) ^ "\n")
   
 let rec show_principal_knowledge principal knowledge =
-  List.map (fun (t, _, _, _) -> t) (List.filter (fun (_, _, p, _) -> principal = p) knowledge)
+  List.rev (List.map (fun (t, _, _, _) -> t) (List.filter (fun (_, _, p, _) -> principal = p) knowledge))
 
 let rust_output (pr:problem) : unit =
   let knowledge = List.map (fun (p, _) -> p, initial_knowledge p [] pr.knowledge) pr.principals in
