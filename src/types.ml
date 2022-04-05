@@ -14,7 +14,7 @@ type data_type =
   | AType of ident
   | DTType of data_type list (* used for tuples in type checking *)
   | DFType of ident (* used for formats *)
-  | None
+  | DNone
 
 (* Terms *)
 type term =
@@ -26,7 +26,7 @@ type term =
   | And of term * term
   | Or of term * term
   | Not of term
-  | If of term * term * term
+  | IfAssign of term * term * term
   | Null
 
 type tenv = (principal * (ident * data_type) list) list
@@ -49,6 +49,7 @@ type let_bind =
     New of ident * data_type * let_bind
   | Let of pattern * term * let_bind
   | Event of ident * term list * let_bind
+  | IfBlock of term * let_bind * let_bind
   | LetEnd
 
 (* Channel options / Bullet notation *)
@@ -64,7 +65,7 @@ type event =
   
 type query =
   ReachQuery of event
-  | CorrQuery of event * query
+  | CorrQuery of event list * query
 
 (* Global types: p -> q *)
 type global_type =
@@ -85,6 +86,7 @@ type local_type =
   | LLet of pattern * term * local_type
   | LEvent of ident * term list * local_type
   | LCall of ident * (ident * data_type) list * local_type
+  | LIf of term * local_type * local_type
   | LLocalEnd
 
 type problem = { name: ident;
@@ -112,7 +114,7 @@ let rec show_term = function
   | And(t1, t2) -> show_term t1 ^ " & " ^ show_term t2
   | Or(t1, t2) -> show_term t1 ^ " | " ^ show_term t2
   | Not(t) -> "~" ^ show_term t
-  | If(cond, tterm, fterm) -> "if(" ^ show_term cond ^ ", " ^ show_term tterm ^ ", " ^ show_term fterm ^ ")"
+  | IfAssign(cond, tterm, fterm) -> "if(" ^ show_term cond ^ ", " ^ show_term tterm ^ ", " ^ show_term fterm ^ ")"
   | Null -> ""
 
 and get_channel_name sender receiver = if receiver < sender then receiver ^ sender else sender ^ receiver
@@ -124,7 +126,7 @@ and show_term_list = function
   | (x::xs) -> show_term x ^ ", " ^ show_term_list xs
 
 and show_pattern = function
-    PVar(x, None) -> x
+    PVar(x, DNone) -> x
   | PVar(x, dt) -> x ^ ": " ^ show_dtype dt
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "<" ^ show_pattern_list args ^ ">"
@@ -148,40 +150,11 @@ and show_dtype t =
   | DFType dtype -> dtype
   | _ -> ""
 
-and show_let_bind = function
-    New(name, data_type, letb) -> "  " ^ "new " ^ name ^ ";\n" ^ show_let_bind letb
-  | Let(p, t, letb) -> "let " ^ show_pattern p ^ " = " ^ show_term t ^ " in\n" ^ show_let_bind letb
-  | Event(f, args, letb) -> "event " ^ f ^ "("^ show_term_list args ^ ")\n" ^ show_let_bind letb
-  | LetEnd -> ""
-
 and show_channel_option = function
     Public   -> " -> "
   | Auth     -> " *-> "
   | Conf     -> " ->* "
   | AuthConf -> " *->* "
-
-(* Show global types *)
-and show_global_type = function
-  Send(p, q, opt, x, t, g) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ "\n" ^ show_global_type g
-| Compute(p, letb, g) ->
-  p ^ " {\n" ^ show_let_bind letb ^ "}\n" ^ show_global_type g
-| DefGlobal(name, g, g') ->
-  name ^ show_global_type g ^ "\nin\n"^ show_global_type g'
-| CallGlobal(name) ->
-  name ^ "()"
-| Branch(p, q, opt, lb, rb) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:" ^ show_global_type lb ^ "\n\tRight:" ^ show_global_type rb ^ "\n}\n"
-| GlobalEnd -> "end\n"
-
-and show_global_type_nr = function
-  Send(p, q, opt, x, t, _) -> p ^ show_channel_option opt ^ q ^ ": " ^ x ^ " = " ^ show_term t ^ " ..."
-| Compute(p, letb, _) ->
-  p ^ " {\n" ^ show_let_bind letb ^ "}...\n"
-| DefGlobal(name, g, _) ->
-  name ^ "()" ^ show_global_type g ^ "\nin...\n"
-| CallGlobal(name) ->
-  name ^ "()"
-| Branch(p, q, opt, _, _) -> p ^ show_channel_option opt ^ q ^ " {\n\tLeft:...\n\tRight:...\n}\n"
-| GlobalEnd -> "end\n"
 
 and show_params = function
   [] -> ""
@@ -273,18 +246,31 @@ let rec get_term_type env forms funs = function
      | None -> raise (SyntaxError ("Form " ^ f ^ " doesn't exist in forms"))
    end
  | Tuple(args) -> DTType(List.map (fun t -> get_term_type env forms funs t) args)
- | Eq(t1, t2) ->
-     DType "bool" (* TODO: Consider checking types of t1 and t2 *)
- | And(t1, t2) | Or(t1, t2) ->
-     DType "bool"
+ | Eq(t1, t2) | And(t1, t2) | Or(t1, t2) ->
+    let first = get_term_type env forms funs t1 in
+    let second = get_term_type env forms funs t2 in
+    if first = second 
+      then DType "bool"
+      else raise (TypeError (sprintf "Variable type %s doesn't match %s in condition check" (show_dtype first) (show_dtype second)))
  | Not(t) ->
-     DType "bool" (* TODO: Consider if we need to check env *)
- | If(cond, t1, t2) -> 
-     let first = get_term_type env forms funs t1 in
-     let second = get_term_type env forms funs t2 in
-     if first = second then first
-     else raise (TypeError ("t1 and t2 are not of the same type in if-assignment"))
- | Null -> None
+    let term_type = get_term_type env forms funs t in
+    begin
+      match term_type with
+      | DType(b) when b = "bool" -> DType "bool"
+      | _ ->  raise (TypeError (sprintf "Variable type %s doesn't match bool in negation" (show_dtype term_type)))
+    end
+ | IfAssign(cond, t1, t2) ->
+    let cond_type = get_term_type env forms funs cond in
+    begin
+      match cond_type with
+      | DType(b) when b = "bool" -> 
+        let first = get_term_type env forms funs t1 in
+        let second = get_term_type env forms funs t2 in
+        if first = second then first
+        else raise (TypeError ("t1 and t2 are not of the same type in if-assignment"))
+      | _ ->  raise (TypeError (sprintf "Variable type %s doesn't match bool in if condition" (show_dtype cond_type)))
+    end
+ | Null -> DNone
      
 let rec get_pattern_types env forms funs = function
  | PVar(x, pdt) ->
@@ -292,11 +278,11 @@ let rec get_pattern_types env forms funs = function
      let existing_type = 
        match List.assoc_opt x env with
        | Some(dt) -> dt
-       | None -> None in
+       | None -> DNone in
      match pdt with
-     | None -> [(x, existing_type)]
+     | DNone -> [(x, existing_type)]
      | _ -> 
-       if existing_type <> None && pdt <> existing_type
+       if existing_type <> DNone && pdt <> existing_type
          then raise (TypeError(sprintf "Variable %s was matched to type %s, but was previously assigned as %s" x (show_dtype pdt) (show_dtype existing_type)))
          else [(x, pdt)]
    end
@@ -314,7 +300,7 @@ let rec get_pattern_types env forms funs = function
        let argtypes = List.flatten (List.map (fun arg -> get_pattern_types env forms funs arg) args) in
        let combinetypes = List.combine argtypes dtypes in
        List.map (fun ((x, dt), fdt) ->
-         if dt <> None && dt <> fdt
+         if dt <> DNone && dt <> fdt
            then raise (TypeError(sprintf "Variable %s is used as %s, but was previously assigned as %s" x (show_dtype fdt) (show_dtype dt)))
            else (x, fdt)
        ) combinetypes
@@ -356,7 +342,7 @@ let rec get_term_variables = function
   | Func(_, args) | Form(_, args) | Tuple(args) -> List.flatten (List.map (get_term_variables) args)
   | Eq(t1, t2) | And(t1, t2) | Or(t1, t2) -> List.flatten (List.map (get_term_variables) [t1;t2])
   | Not(t) -> get_term_variables t
-  | If(cond, t1, t2) -> List.flatten (List.map (get_term_variables) [cond; t1;t2])
+  | IfAssign(cond, t1, t2) -> List.flatten (List.map (get_term_variables) [cond; t1;t2])
   | Null -> []
 
 let rec get_pattern_variables = function
@@ -383,6 +369,9 @@ let rec get_free_variables gfuns reserved princ gt acc =
         let newreserved = (List.filter (fun x -> not(List.exists (fun y -> x = y) newacc)) (get_pattern_variables pattern))@reserved in
         inner newreserved next newacc
       | Event(_, terms, next) -> inner reserved next ((List.flatten (List.map (get_term_variables) terms))@acc)
+      | IfBlock(cond, thenb, elseb) ->
+        let newacc = get_term_variables cond@acc in
+        inner reserved thenb (inner reserved elseb newacc)
       | LetEnd -> get_free_variables gfuns reserved princ g acc in
     inner reserved letb acc
  | Compute(_, _, g) -> get_free_variables gfuns reserved princ g acc
@@ -391,37 +380,37 @@ let rec get_free_variables gfuns reserved princ gt acc =
  | CallGlobal(name) -> get_free_variables gfuns reserved princ (List.assoc name gfuns) acc (* Get the free vars for a global func if we find a call to it *)
  | GlobalEnd -> List.filter (fun x -> not(List.exists (fun y -> x = y) reserved)) acc
 
-let rec compile principals orig_env env forms funs evs gfuns princ gt =
+let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt =
  match gt with
  | Send(s, r, opt, x, t, g) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LSend(s, r, opt, t, ttype, compile principals orig_env env' forms funs evs gfuns princ g)
+   LSend(s, r, opt, t, ttype, compile principals if_prefix orig_env env' forms funs evs gfuns princ g)
  | Send(s, r, opt, x, t, g) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LRecv(s, r, opt, PVar(x, ttype), t, compile principals orig_env env' forms funs evs gfuns princ g)
+   LRecv(s, r, opt, PVar(x, ttype), t, compile principals if_prefix orig_env env' forms funs evs gfuns princ g)
  | Send(s, r, _, x, t, g) ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   compile principals orig_env env' forms funs evs gfuns princ g
+   compile principals if_prefix orig_env env' forms funs evs gfuns princ g
  | Compute(p, letb, g) ->
    check_principle_exists principals p;
-   let rec compile_letb inner_env letb =
+   let rec compile_letb inner_env return_type letb =
      match letb with
      | New(name, dt, next) ->
        let inner_env' = safe_update p name dt inner_env in
        if p = princ 
-         then LNew(name, dt, compile_letb inner_env' next)
-         else compile_letb inner_env' next
+         then LNew(name, dt, compile_letb inner_env' return_type next)
+         else compile_letb inner_env' return_type next
      | Let(pattern, term, next) ->
        let ptypes = get_pattern_types (get_penv inner_env p) forms funs pattern in
        let ttype = get_term_type (get_penv inner_env p) forms funs term in
        let inner_env' = if List.length ptypes == 1 then
-         if (snd (List.nth ptypes 0)) <> None && (snd (List.nth ptypes 0)) <> ttype then
+         if (snd (List.nth ptypes 0)) <> DNone && (snd (List.nth ptypes 0)) <> ttype then
            raise (TypeError(sprintf "Mismatching types in left and right hand parts of assignment"))
          else 
            safe_update p (fst (List.nth ptypes 0)) ttype inner_env
@@ -429,7 +418,7 @@ let rec compile principals orig_env env forms funs evs gfuns princ gt =
          let unpacked = dt_unpack ttype in
          if List.length ptypes == List.length unpacked then
            List.fold_left2 (fun acc ptype unpacktype -> 
-             if (snd ptype) <> None && (snd ptype) <> unpacktype then
+             if (snd ptype) <> DNone && (snd ptype) <> unpacktype then
                raise (TypeError(sprintf "Mismatching types in left and right hand parts of assignment"))
              else 
                safe_update p (fst ptype) unpacktype acc
@@ -437,31 +426,59 @@ let rec compile principals orig_env env forms funs evs gfuns princ gt =
          else
            raise (SyntaxError(sprintf "Could not match left hand side of assignment to right hand side of assignment, mismatching number of variables")) in
        if p = princ then 
-         LLet(pattern, term, compile_letb inner_env' next)
+         LLet(pattern, term, compile_letb inner_env' return_type next)
        else 
-         compile_letb inner_env' next
+         compile_letb inner_env' return_type next
      | Event(name, terms, next) ->
        check_event_types (get_penv inner_env p) evs forms funs name terms;
        if p = princ then
-         LEvent(name, terms, compile_letb inner_env next)
-       else compile_letb inner_env next
-     | LetEnd -> compile principals orig_env inner_env forms funs evs gfuns princ g in
-   compile_letb env letb
+         LEvent(name, terms, compile_letb inner_env return_type next)
+       else compile_letb inner_env return_type next
+     | IfBlock(cond, thenb, elseb) ->
+       let _ = get_term_type (get_penv inner_env p) forms funs cond in
+       if p = princ then
+        let penv = get_penv inner_env princ in
+        let free_vars = get_free_variables gfuns [] princ g [] in
+        let free_vars_uniq = List.sort_uniq (fun x y -> compare x y) free_vars in
+        let free_vars_with_types = List.map (fun x -> 
+          match List.assoc_opt x penv with
+          | Some(dt) -> (x, dt)
+          | None -> raise (SyntaxError(sprintf "Could not find variable %s used in function %s in env" x "_Condition"))
+        ) free_vars_uniq in
+        let name = if_prefix ^ "I" in
+        let next = compile principals name orig_env inner_env forms funs evs gfuns princ g in
+        begin
+          match next with
+          | LLocalEnd -> LIf(cond, compile_letb inner_env None thenb, compile_letb inner_env None elseb)
+          | _ -> 
+            let lcall = LCall(name, free_vars_with_types, next) in
+            LIf(cond, compile_letb inner_env (Some(lcall)) thenb, compile_letb inner_env (Some(lcall)) elseb)
+        end
+       else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
+      | LetEnd ->
+          begin
+            match return_type with
+            | Some(lcall) -> lcall
+            | None -> compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
+          end in
+   compile_letb env None letb
  | Branch(s, r, _, lb, rb) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LOffer(s, r, compile principals env env' forms funs evs gfuns princ lb, compile principals env env' forms funs evs gfuns princ rb)
+   let passed_env = if List.length orig_env <> 0 then safe_join_envs orig_env env else env in
+   LOffer(s, r, compile principals (if_prefix ^ "BL") passed_env env' forms funs evs gfuns princ lb, compile principals (if_prefix ^ "BR") passed_env env' forms funs evs gfuns princ rb)
  | Branch(s, r, _, lb, rb) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   LChoose(s, r, compile principals env env' forms funs evs gfuns princ lb, compile principals env env' forms funs evs gfuns princ rb)
+   let passed_env = if List.length orig_env <> 0 then safe_join_envs orig_env env else env in (* Updating the original env with the one from a branch and passing it on for the nested branching where it will get filtered again *)
+   LChoose(s, r, compile principals (if_prefix ^ "BL") passed_env env' forms funs evs gfuns princ lb, compile principals (if_prefix ^ "BR") passed_env env' forms funs evs gfuns princ rb)
  | Branch(s, r, _, lb, rb) ->
     check_principle_exists principals s; check_principle_exists principals r;
-    let left = compile principals orig_env env forms funs evs gfuns princ lb in
-    let right = compile principals orig_env env forms funs evs gfuns princ rb in
-    if (compare left right) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way")); (* Compare branches for all non-branching parties *)
+    let left = compile principals if_prefix orig_env env forms funs evs gfuns princ lb in
+    let right = compile principals if_prefix orig_env env forms funs evs gfuns princ rb in
+    if (compare left right) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way for %s" princ)); (* Compare branches for all non-branching parties *)
     left
- | DefGlobal(name, def, g) -> compile principals orig_env env forms funs evs ((name, def)::gfuns) princ g (* Adding functions as we find them; Even if we have 2 global funcs defined with the same name, we would know which one we are referring to when we have the call *)
+ | DefGlobal(name, def, g) -> compile principals if_prefix orig_env env forms funs evs ((name, def)::gfuns) princ g (* Adding functions as we find them; Even if we have 2 global funcs defined with the same name, we would know which one we are referring to when we have the call *)
  | CallGlobal(name) when List.length orig_env <> 0 -> (* If in a branch - when calling LCall we will pass false if not in a branch *)
     let penv = get_penv env princ in
     let free_vars = get_free_variables gfuns [] princ (List.assoc name gfuns) [] in
@@ -472,8 +489,8 @@ let rec compile principals orig_env env forms funs evs gfuns princ gt =
       | None -> raise (SyntaxError(sprintf "Could not find variable %s used in function %s in env" x name))
     ) free_vars_uniq in
     let passed_env = safe_join_envs orig_env env in (* If in branch, we combine the env that was present during the branching with the original env, so in case new variable were created, we get an updated env going forward *)
-    LCall(name, free_vars_with_types, compile principals [] passed_env forms funs evs gfuns princ (List.assoc name gfuns)) (* Have all the vars with their types that we pass to the principal's call for their part in the global func *)
- | CallGlobal(name) -> compile principals [] env forms funs evs gfuns princ (List.assoc name gfuns)
+    LCall(name, free_vars_with_types, compile principals name [] passed_env forms funs evs gfuns princ (List.assoc name gfuns)) (* Have all the vars with their types that we pass to the principal's call for their part in the global func *)
+ | CallGlobal(name) -> compile principals name [] env forms funs evs gfuns princ (List.assoc name gfuns)
  | _ -> LLocalEnd
 
  and build_global_funs_list = function

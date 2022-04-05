@@ -1,0 +1,61 @@
+Problem: NeedhamSchroeder;
+Principals: A, B;
+Knowledge: ska:skey@A,
+           skb:skey@B,
+           pkb:pkey@A = pk(skb),
+           pka:pkey@B = pk(ska);
+Types: bytes, symkey, skey, pkey;
+Functions: pk(skey) -> pkey,
+           aenc(pkey, bytes) -> bytes,
+           adec(skey, bytes) -> bytes,
+           hash(bytes) -> bytes,
+           nawrap(pkey, bytes) -> bytes,
+           naunwrap(bytes) -> <pkey, bytes>,
+           nanbwrap(pkey, bytes, bytes) -> bytes,
+           nanbunwrap(bytes) -> <pkey, bytes, bytes>; 
+Equations: adec(k, aenc(pk(k), m)) = m,
+           naunwrap(nawrap(pk, nonce)) = <pk, nonce>,
+           nanbunwrap(nanbwrap(pk, nonce1, nonce2)) = <pk, nonce1, nonce2>;
+Events: start_a(pkey, pkey, bytes),
+        mid_a(pkey, pkey, bytes, bytes), 
+        end_a(pkey, pkey, bytes, bytes),
+        start_b(pkey, pkey, bytes, bytes),
+        end_b(pkey, pkey, bytes, bytes);
+Queries: event(start_a(pka, pkb, na)),
+         event(mid_a(pka, pkb, na, nb)),
+         event(end_a(pka, pkb, na, nb)),
+         event(start_b(pka, pkb, na, nb)),
+         event(end_b(pka, pkb, na, nb)),
+         event(end_a(pka, pkb, na, nb)) => event(start_b(pka, pkb, na, nb)),
+         inj-event(end_a(pka, pkb, na, nb)) => inj-event(start_b(pka, pkb, na, nb));
+Protocol:
+A {
+    new na: bytes;
+    event start_a(pk(ska), pkb, na);
+    let ct = aenc(pkb, nawrap(pk(ska), na));
+}
+A -> B: cta = ct
+B {
+    let <%pka, na: bytes> = naunwrap(adec(skb, cta));
+    new nb: bytes;
+    event start_b(pka, pk(skb), na, nb);
+    let ct = aenc(pka, nanbwrap(pk(skb), na, nb));
+}
+B -> A: ctb = ct
+A {
+    let <%pkb, x_na: bytes, x_nb: bytes> = nanbunwrap(adec(ska, ctb));
+    event mid_a(pk(ska), pkb, x_na, x_nb);
+    new enc_nb: bytes;
+    if (x_na = na) {
+        let enc_nb = aenc(pkb, x_nb);
+        event end_a(pk(ska), pkb, x_na, x_nb);
+    }
+}
+A -> B: z = enc_nb
+B {
+    let z_nb = adec(skb, z);
+    if (z_nb = nb) {
+        event end_b(pka, pk(skb), na, nb);
+    }
+}
+end

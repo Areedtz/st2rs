@@ -20,7 +20,7 @@ let rec translateTerm t =
   | And(l, r) -> OExp(translateTerm l, And, translateTerm r)
   | Or(l, r) -> OExp(translateTerm l, Or, translateTerm r)
   | Not(t) -> Id(ID("!" ^ printExp 0 (translateTerm t)))
-  | If(cond, t1, t2) -> IfAssign(translateTerm cond, BStmts([SExp(translateTerm t1)]), BStmts([SExp(translateTerm t2)]))
+  | IfAssign(cond, t1, t2) -> If(translateTerm cond, BStmts([SExp(translateTerm t1)]), BStmts([SExp(translateTerm t2)]))
   | Null -> Id(ID(""))
 
 and combineConditions cons =
@@ -41,9 +41,12 @@ and translatePattern pat (conditions : (term * term) list) =
   | PMatch(t) ->
       let var = next_var() in
       (ID(var), (t, Var(var))::conditions)
-  | PTuple(args) -> 
-    let pargs = String.concat ", " (List.map (fun p -> printrId (fst (translatePattern p conditions))) args) in
-    (ID("(" ^ pargs ^ ")"), conditions)
+  | PTuple(args) ->
+    let res = List.fold_left (fun acc p -> 
+      let pattern = translatePattern p conditions in
+      (fst(acc)@[(printrId (fst(pattern)))], snd(acc)@snd(pattern))) ([], []) args in
+    let pargs = String.concat ", " (fst(res)) in
+    (ID("(" ^ pargs ^ ")"), snd(res))
 
 and translateArgs args =
   Exps( (List.map (fun a -> translateTerm a) args))
@@ -84,7 +87,7 @@ and process princ channels = function
     LSend(sender, receiver, opt, t, _, local_type) ->
     let ident = get_channel_name princ sender receiver in
     let send = toFunction "send" (Exps([Id(ID("c_" ^ ident)); translateTerm t])) in
-    SDeclExp(DeclExp(fst(translatePattern (PVar ("c_" ^ ident, None)) []), send))::process princ channels local_type
+    SDeclExp(DeclExp(fst(translatePattern (PVar ("c_" ^ ident, DNone)) []), send))::process princ channels local_type
   | LNew (ident, data_type, local_type) -> (fresh ident data_type)::process princ channels local_type
   | LLet (PForm(fname, args), term, local_type) ->
     let patterns = List.map (fun a -> translatePattern (a) []) args in
@@ -92,16 +95,16 @@ and process princ channels = function
     let pats = List.map (fun x-> fst(x)) patterns in
     let strPtn = StructPattern(ID(fname), pats) in
     if(conditions = []) then SDeclExp(PatrExp(strPtn, translateTerm term))::process princ channels local_type
-    else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type)))]
+    else SDeclExp(PatrExp(strPtn, translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type), Empty))]
   | LLet (PMatch(mat), term, local_type) ->
-    [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process princ channels local_type)))]
+    [SIfStatement(If(OExp(translateTerm mat, Equals, translateTerm term), BStmts(process princ channels local_type), Empty))]
   | LLet (ident, term, local_type) ->
     let patterns = translatePattern ident [] in
     let conditions = snd(patterns) in
     if(conditions = []) then begin
       SDeclExp(DeclExp(fst(patterns), translateTerm term))::process princ channels local_type end
     else begin
-      [SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type)))]
+      SDeclExp(DeclExp(fst(patterns), translateTerm term))::[SIfStatement(If((equals_condition_patterns conditions), BStmts(process princ channels local_type), Empty))]
     end
   | LRecv (sender, receiver, opt, PVar(x, _), term, LLet (PForm(fname, args), Var(xx), local_type)) ->
     let ident = get_channel_name princ sender receiver in
@@ -122,6 +125,8 @@ and process princ channels = function
     let lb_bstmts = BStmts(lb_stmts) in
     let rb_bstmts = BStmts(rb_stmts) in
     [SBranch(Offer(ID("c_" ^ ident), lb_bstmts, rb_bstmts))]
+  | LIf(cond, thenb, elseb) ->
+    [SIfStatement(If(translateTerm cond, BStmts(process princ channels thenb), BStmts(process princ channels elseb)))]
   | LLocalEnd -> close_channels channels
   | LCall(_, _, local_type) -> process princ channels local_type (* Compiling from Local Types to Rust Types *)
   | _ -> [End]

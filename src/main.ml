@@ -20,12 +20,6 @@ let parse_with_error lexbuf =
     fprintf stderr "%a: syntax error\n" print_position lexbuf;
     exit (-1)
 
-let rec print_errors = function
-  | (msg, g)::err ->
-    fprintf stderr "%s in %s\n" msg (show_global_type_nr g);
-    print_errors err
-  | [] -> ()
-
 let main =
   let filename = Sys.argv.(1) in
   let inx = open_in filename in

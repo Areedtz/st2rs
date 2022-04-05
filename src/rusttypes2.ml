@@ -45,11 +45,11 @@ and exp =
   | EStruct of rId * structValues
   | Exp of exp * exp
   | OExp of exp * op * exp
-  | IfAssign of exp * block * block
+  | If of exp * block * block
   | Unimplemented
 
 and ifStatement =
-  | If of exp * block
+  | If of exp * block * block
 
 and branchStatement =
   | Offer of rId * block * block

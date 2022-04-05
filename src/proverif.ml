@@ -16,7 +16,7 @@ and show_dtype t =
   | _ -> ""
 
 and show_pattern = function
-    PVar(x, None) -> x
+    PVar(x, DNone) -> x
   | PVar(x, dt) -> x ^ ": " ^ show_dtype dt
   | PForm(name, args) -> name ^ "(" ^ show_pattern_list args ^ ")"
   | PTuple(args) -> "(" ^ show_pattern_list args ^ ")"
@@ -36,7 +36,7 @@ let rec show_term = function
   | And(t1, t2) -> show_term t1 ^ " && " ^ show_term t2
   | Or(t1, t2) -> show_term t1 ^ " || " ^ show_term t2
   | Not(t) -> "not(" ^ show_term t ^ ")"
-  | If(cond, tterm, fterm) -> "( if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ " )"
+  | IfAssign(cond, tterm, fterm) -> "( if(" ^ show_term cond ^ ") then " ^ show_term tterm ^ " else " ^ show_term fterm ^ " )"
   | Null -> ""
 
 and show_term_list = function
@@ -58,9 +58,11 @@ and show_event = function
   NonInjEvent(id, args) -> "event(" ^ id ^ "(" ^ show_term_list args ^ "))"
   | InjEvent(id, args) -> "inj-event(" ^ id ^ "(" ^ show_term_list args ^ "))"
 
+and show_events evs = String.concat " && " (List.map (fun e -> show_event e) evs)
+
 let rec show_query = function
   ReachQuery(event) -> show_event event
-  | CorrQuery(event, next) -> "(" ^ show_event event ^ " ==> " ^ show_query next ^ ")"
+  | CorrQuery(events, next) -> "(" ^ show_events events ^ " ==> " ^ show_query next ^ ")"
 
 let rec build_query_params query funcs event_names_and_types function_names_and_types = (* [(var name, type)...] *)
   let rec inner e t pos function_types =
@@ -89,7 +91,7 @@ let rec build_query_params query funcs event_names_and_types function_names_and_
     | _ -> [] in
   let params = 
     match query with
-    | ReachQuery(event) -> 
+    | ReachQuery(event) ->
       begin
         match event with
         | NonInjEvent(e, args) | InjEvent(e, args) -> 
@@ -97,14 +99,15 @@ let rec build_query_params query funcs event_names_and_types function_names_and_
           if List.length args <> List.length event_types then raise (SyntaxError(sprintf "Wrong number of arguments passed to %s event" e));
           List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
       end
-    | CorrQuery(event, next) ->
+    | CorrQuery(events, next) ->
+      (List.flatten (List.map (fun event -> 
       begin
         match event with
         | NonInjEvent(e, args) | InjEvent(e, args) -> 
           let event_types = List.assoc e event_names_and_types in
           if List.length args <> List.length event_types then raise (SyntaxError(sprintf "Wrong number of arguments passed to %s event" e));
           List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
-      end
+      end) events))
       @ build_query_params next funcs event_names_and_types function_names_and_types in
   List.sort_uniq (fun (a, _) (c, _) -> compare a c) params
 
@@ -118,7 +121,7 @@ and show_query_params query funcs event_names_and_types function_names_and_types
 and show_query_with_params query funcs event_names_and_types function_names_and_types =
   match query with
   | ReachQuery(event) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_event event
-  | CorrQuery(event, next) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_query query
+  | CorrQuery(_, _) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_query query
 
 and show_channel parties = function
   Public -> "c"
@@ -144,6 +147,13 @@ and show_local_type p channels prefix = function
       let left = sprintf "%s(\n%s\tlet Left(leftbr) = branchchoice in\n%s\n%s)" prefix prefix (show_local_type p channels (prefix ^ "\t") lb) prefix in
       let right = sprintf "%s(\n%s\tlet Right(rightbr) = branchchoice in\n%s\n%s)" prefix prefix (show_local_type p channels (prefix ^ "\t") rb) prefix in
       sprintf "%sin(c, branchchoice: bitstring);\n%s\n%s|\n%s" prefix left prefix right
+  | LIf(cond, thenb, elseb) ->
+      let if_then = sprintf "%sif %s then\n%s" prefix (show_term cond) (show_local_type p channels (prefix ^ "\t") thenb) in
+      begin
+        match elseb with
+        | LLocalEnd -> sprintf "%s" if_then
+        | _ -> sprintf "%s\n%selse\n%s" if_then prefix (show_local_type p channels (prefix ^ "\t") elseb)
+      end
   | LCall(ident, params, _) ->
     sprintf "%s%s%s(%s)" prefix p ident (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) params)))
   | LLocalEnd -> prefix ^ "0"
@@ -160,11 +170,13 @@ knowledge ->
       | Null -> -1
       | _ -> 1
       ) uniq_vars in
-    (String.concat "\n" (List.map (fun (name, dtype, func) -> 
-      match func with
-      | Null -> "\tnew " ^ name ^ ": " ^ show_dtype dtype ^ ";"
-      | _ -> "\tlet " ^ name ^ " = " ^ show_term func ^ " in"
-      ) sorted) ^ "\n")
+    if List.length sorted <> 0 then
+      (String.concat "\n" (List.map (fun (name, dtype, func) -> 
+        match func with
+        | Null -> "\tnew " ^ name ^ ": " ^ show_dtype dtype ^ ";"
+        | _ -> "\tlet " ^ name ^ " = " ^ show_term func ^ " in"
+        ) sorted) ^ "\n\n")
+      else ""
 
 and show_party_params = function
   params -> List.map (fun (name, dtype, _) -> name ^ ": " ^ show_dtype dtype) params
@@ -197,7 +209,7 @@ let rec find_branch_functions = function
   | LChoose(_, _, lb, rb) | LOffer(_, _, lb, rb) ->
     find_branch_functions lb @ find_branch_functions rb
   | LSend(_, _, _, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
-  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_branch_functions next
+  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) | LIf(_, next, _) -> find_branch_functions next (* LIF - thenb and elseb will be the same => we can pick any *)
   | LCall(name, params, next) -> find_branch_functions next@[(name, (params, next))]
   | LLocalEnd -> []
 
@@ -215,9 +227,12 @@ let proverif (pr:problem): unit =
   let function_types = List.map (fun f -> build_function_types f) pr.functions in
   let event_types = List.map (fun e -> build_event_types e) pr.events in
   let channels = build_channels [] pr.protocol in
-  let channel_inits = String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) in
-  let global_funs = build_global_funs_list pr.protocol in
-  let locals = List.map (fun (p, _) -> (p, (compile pr.principals [] env pr.formats pr.functions pr.events [] p pr.protocol))) pr.principals in
+  let channel_inits = 
+    if List.length channels <> 0 then
+      String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) ^ "\n" 
+    else 
+      "" in
+  let locals = List.map (fun (p, _) -> (p, (compile pr.principals "" [] env pr.formats pr.functions pr.events [] p pr.protocol))) pr.principals in
   printf  "(* Protocol: %s *)\n\n" pr.name;
   printf "free c: channel.\n\n%s\n\n" "fun Left(bitstring): bitstring [data].\nfun Right(bitstring): bitstring [data].";
   List.iter (fun t -> 
@@ -241,4 +256,4 @@ let proverif (pr:problem): unit =
   List.iter (fun (p, plocals) ->
     printf "%s" (find_and_print_branch_functions channels plocals p)) locals;
   List.iter (fun (p, b) -> printf "let %s(%s) = \n%s.\n\n" p (String.concat ", " ((show_party_channels p [] ": channel" channels)@(show_party_params (List.assoc p knowledge)))) (show_local_type p channels "\t" (List.assoc p locals))) pr.principals;
-  printf "process (\n%s\n%s\n\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))
+  printf "process (\n%s%s\t%s\n)" channel_inits (show_knowledge knowledge) (String.concat " |\n\t" (List.map (fun (p, _) -> p ^ "(" ^ (String.concat ", " ((show_party_channels p [] "" channels)@(instantiate_party_process_vars p knowledge))) ^ ")") pr.principals))

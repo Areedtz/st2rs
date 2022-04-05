@@ -6,7 +6,7 @@
 %token COMMA COLON SEMI PCT ARROW BIGARROW AT AUTH CONF AUTHCONF
 %token LEFT_PAR RIGHT_PAR LEFT_ANGLE RIGHT_ANGLE LEFT_BRACE RIGHT_BRACE LEFT_BRACK RIGHT_BRACK
 %token EQ AND OR NOT
-%token NEW LET EVENT INJ_EVENT IN END IF BRANCH_END
+%token NEW LET EVENT INJ_EVENT IN END IF ELSE
 %token PROBLEM PRINCIPALS KNOWLEDGE TYPES FUNCTIONS EQUATIONS FORMATS EVENTS QUERIES PROTOCOL DISHONEST
 %token EOF
 
@@ -57,14 +57,17 @@ evdef:
 | e = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR { (e, params) }
 
 qdef:
+| events = event_list; BIGARROW; q = qdef { CorrQuery(events, q) }
 | event = event { ReachQuery(event) }
-| event = event; BIGARROW; q = qdef { CorrQuery(event, q) }
 
 event:
 | INJ_EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
   { InjEvent(e, args) }
 | EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
   { NonInjEvent(e, args) }
+
+event_list:
+| l = separated_list(AND, event) { l }
 
 prindef:
 | name = ID; LEFT_BRACK; DISHONEST; RIGHT_BRACK
@@ -97,7 +100,7 @@ term:
 | LEFT_PAR; t = term; RIGHT_PAR
   { t }
 | IF; LEFT_PAR; cond = term; COMMA; tterm = term; COMMA; fterm = term; RIGHT_PAR
-  { If(cond, tterm, fterm) };
+  { IfAssign(cond, tterm, fterm) };
 
 term_list:
 | l = separated_list(COMMA, term)
@@ -116,7 +119,7 @@ pattern:
 | LEFT_PAR; p = pattern; RIGHT_PAR 
   { p }
 | name = ID
-  { PVar(name, None) }
+  { PVar(name, DNone) }
 | name = ID; COLON; dt = data_type
   { PVar(name, dt) }
 | PCT; t = term
@@ -137,6 +140,10 @@ let_bind:
   { Let(p, t, letb) }
 | EVENT; name = ID; LEFT_PAR; ts = term_list; RIGHT_PAR; SEMI; letb = let_bind
   { Event(name, ts, letb) }
+| IF; LEFT_PAR; cond = term; RIGHT_PAR; LEFT_BRACE; then_body = let_bind; RIGHT_BRACE; ELSE; LEFT_BRACE; else_body = let_bind; RIGHT_BRACE
+  { IfBlock(cond, then_body, else_body) }
+| IF; LEFT_PAR; cond = term; RIGHT_PAR; LEFT_BRACE; then_body = let_bind; RIGHT_BRACE
+  { IfBlock(cond, then_body, LetEnd) }
 | { LetEnd };
 
 channel_option:
@@ -158,6 +165,3 @@ global_type:
   { CallGlobal(name) }
 | END
   { GlobalEnd };
-
-param:
-| x = ID; COLON; dt = data_type; AT; p = ID { ((x, dt), p) }
