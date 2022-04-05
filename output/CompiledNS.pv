@@ -6,14 +6,12 @@ fun Left(bitstring): bitstring [data].
 fun Right(bitstring): bitstring [data].
 
 type bytes.
-type symkey.
 type skey.
 type pkey.
 
 fun pk(skey): pkey.
 fun aenc(pkey, bytes): bytes.
 fun adec(skey, bytes): bytes.
-fun hash(bytes): bytes.
 fun nawrap(pkey, bytes): bytes.
 fun naunwrap(bytes): bitstring.
 fun nanbwrap(pkey, bytes, bytes): bytes.
