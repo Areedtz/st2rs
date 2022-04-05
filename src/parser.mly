@@ -57,14 +57,17 @@ evdef:
 | e = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR { (e, params) }
 
 qdef:
+| events = event_list; BIGARROW; q = qdef { CorrQuery(events, q) }
 | event = event { ReachQuery(event) }
-| event = event; BIGARROW; q = qdef { CorrQuery(event, q) }
 
 event:
 | INJ_EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
   { InjEvent(e, args) }
 | EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
   { NonInjEvent(e, args) }
+
+event_list:
+| l = separated_list(AND, event) { l }
 
 prindef:
 | name = ID; LEFT_BRACK; DISHONEST; RIGHT_BRACK

@@ -65,7 +65,7 @@ type event =
   
 type query =
   ReachQuery of event
-  | CorrQuery of event * query
+  | CorrQuery of event list * query
 
 (* Global types: p -> q *)
 type global_type =

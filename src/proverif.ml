@@ -58,9 +58,11 @@ and show_event = function
   NonInjEvent(id, args) -> "event(" ^ id ^ "(" ^ show_term_list args ^ "))"
   | InjEvent(id, args) -> "inj-event(" ^ id ^ "(" ^ show_term_list args ^ "))"
 
+and show_events evs = String.concat " && " (List.map (fun e -> show_event e) evs)
+
 let rec show_query = function
   ReachQuery(event) -> show_event event
-  | CorrQuery(event, next) -> "(" ^ show_event event ^ " ==> " ^ show_query next ^ ")"
+  | CorrQuery(events, next) -> "(" ^ show_events events ^ " ==> " ^ show_query next ^ ")"
 
 let rec build_query_params query funcs event_names_and_types function_names_and_types = (* [(var name, type)...] *)
   let rec inner e t pos function_types =
@@ -89,7 +91,7 @@ let rec build_query_params query funcs event_names_and_types function_names_and_
     | _ -> [] in
   let params = 
     match query with
-    | ReachQuery(event) -> 
+    | ReachQuery(event) ->
       begin
         match event with
         | NonInjEvent(e, args) | InjEvent(e, args) -> 
@@ -97,14 +99,15 @@ let rec build_query_params query funcs event_names_and_types function_names_and_
           if List.length args <> List.length event_types then raise (SyntaxError(sprintf "Wrong number of arguments passed to %s event" e));
           List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
       end
-    | CorrQuery(event, next) ->
+    | CorrQuery(events, next) ->
+      (List.flatten (List.map (fun event -> 
       begin
         match event with
         | NonInjEvent(e, args) | InjEvent(e, args) -> 
           let event_types = List.assoc e event_names_and_types in
           if List.length args <> List.length event_types then raise (SyntaxError(sprintf "Wrong number of arguments passed to %s event" e));
           List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
-      end
+      end) events))
       @ build_query_params next funcs event_names_and_types function_names_and_types in
   List.sort_uniq (fun (a, _) (c, _) -> compare a c) params
 
@@ -118,7 +121,7 @@ and show_query_params query funcs event_names_and_types function_names_and_types
 and show_query_with_params query funcs event_names_and_types function_names_and_types =
   match query with
   | ReachQuery(event) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_event event
-  | CorrQuery(event, next) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_query query
+  | CorrQuery(_, _) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_query query
 
 and show_channel parties = function
   Public -> "c"
