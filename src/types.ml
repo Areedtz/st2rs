@@ -309,7 +309,19 @@ let rec get_pattern_types env forms funs = function
            else (x, fdt)
        ) combinetypes
    end
- | PTuple(args) -> List.flatten (List.map (fun arg -> get_pattern_types env forms funs arg) args)
+ | PTuple(args) -> List.flatten (List.map (fun arg ->
+      begin
+        match arg with
+        | PVar(x, DNone) -> 
+          begin
+            match List.assoc_opt x env with
+            | None -> raise (TypeError(sprintf "Variable %s is being defined as part of a tuple, but no type is given" x))
+            | _ -> ()
+          end
+        | _ -> ()
+      end;
+      get_pattern_types env forms funs arg) args
+   )
 
 let dt_unpack dt =
  match dt with
