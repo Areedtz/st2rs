@@ -127,9 +127,7 @@ and show_query_with_params query funcs event_names_and_types function_names_and_
 
 and show_channel parties = function
   Public -> "c"
-  | Auth -> "c_" ^ parties ^ "_auth"
-  | Conf -> "c_" ^ parties ^ "_conf"
-  | AuthConf -> "c_" ^ parties ^ "_authconf"
+  | AuthConf -> "c_" ^ parties ^ "_priv"
 
 let rec show_party_channels p acc suffix channels =
   match channels with

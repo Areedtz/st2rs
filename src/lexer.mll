@@ -64,11 +64,7 @@ rule read =
   | "Protocol"   { PROTOCOL }
   | "->"         { ARROW }
   | "=>"         { BIGARROW }
-  | "*->"        { AUTH }
-  | "->*"        { CONF }
   | "*->*"       { AUTHCONF }
-
-
   | id       { let s = Lexing.lexeme lexbuf in ID(s) }
   | _ { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
   | eof      { EOF }

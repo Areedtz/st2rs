@@ -55,8 +55,6 @@ type let_bind =
 (* Channel options / Bullet notation *)
 type channel_option =
   Public
-  | Auth
-  | Conf
   | AuthConf
 
 type event_list_type =
@@ -156,8 +154,6 @@ and show_dtype t =
 
 and show_channel_option = function
     Public   -> " -> "
-  | Auth     -> " *-> "
-  | Conf     -> " ->* "
   | AuthConf -> " *->* "
 
 and show_params = function
