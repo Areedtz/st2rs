@@ -50,6 +50,7 @@ type let_bind =
   | Let of pattern * term * let_bind
   | Event of ident * term list * let_bind
   | IfBlock of term * let_bind * let_bind
+  | LetQuit
   | LetEnd
 
 (* Channel options / Bullet notation *)
@@ -89,6 +90,7 @@ type local_type =
   | LEvent of ident * term list * local_type
   | LCall of ident * (ident * data_type) list * local_type
   | LIf of term * local_type * local_type
+  | LQuit
   | LLocalEnd
 
 type problem = { name: ident;
@@ -384,6 +386,7 @@ let rec get_free_variables gfuns reserved princ gt acc =
       | IfBlock(cond, thenb, elseb) ->
         let newacc = get_term_variables cond@acc in
         inner reserved thenb (inner reserved elseb newacc)
+      | LetQuit -> acc
       | LetEnd -> get_free_variables gfuns reserved princ g acc in
     inner reserved letb acc
  | Compute(_, _, g) -> get_free_variables gfuns reserved princ g acc
@@ -467,6 +470,10 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
             LIf(cond, compile_letb inner_env (Some(lcall)) thenb, compile_letb inner_env (Some(lcall)) elseb)
         end
        else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
+      | LetQuit ->
+          if p = princ then
+            LQuit
+          else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
       | LetEnd ->
           begin
             match return_type with
@@ -503,7 +510,7 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
     let passed_env = safe_join_envs orig_env env in (* If in branch, we combine the env that was present during the branching with the original env, so in case new variable were created, we get an updated env going forward *)
     LCall(name, free_vars_with_types, compile principals name [] passed_env forms funs evs gfuns princ (List.assoc name gfuns)) (* Have all the vars with their types that we pass to the principal's call for their part in the global func *)
  | CallGlobal(name) -> compile principals name [] env forms funs evs gfuns princ (List.assoc name gfuns)
- | _ -> LLocalEnd
+ | GlobalEnd -> LLocalEnd
 
  and build_global_funs_list = function
   DefGlobal(name, g, gt) -> (name, g)::(build_global_funs_list gt)

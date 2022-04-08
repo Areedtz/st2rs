@@ -156,7 +156,7 @@ and show_local_type p channels prefix = function
       end
   | LCall(ident, params, _) ->
     sprintf "%s%s%s(%s)" prefix p ident (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) params)))
-  | LLocalEnd -> prefix ^ "0"
+  | LQuit | LLocalEnd -> prefix ^ "0"
 
 and show_format = function
   (name, types) -> "fun " ^ name ^ "(" ^ (String.concat ", " (List.map (fun t -> show_dtype t) types)) ^ "): bitstring [data]."
@@ -209,9 +209,16 @@ let rec find_branch_functions = function
   | LChoose(_, _, lb, rb) | LOffer(_, _, lb, rb) ->
     find_branch_functions lb @ find_branch_functions rb
   | LSend(_, _, _, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
-  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) | LIf(_, next, _) -> find_branch_functions next (* LIF - thenb and elseb will be the same => we can pick any *)
+  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_branch_functions next
   | LCall(name, params, next) -> find_branch_functions next@[(name, (params, next))]
-  | LLocalEnd -> []
+  | LIf(_, nextthen, nextelse) ->
+    begin
+      match (nextthen, nextelse) with
+      | (LQuit, LQuit) -> []
+      | (LQuit, _) -> find_branch_functions nextelse
+      | (_, _) -> find_branch_functions nextthen
+    end
+  | LQuit | LLocalEnd -> []
 
 let rec find_and_print_branch_functions channels l p =
   let branch_functions = find_branch_functions l in

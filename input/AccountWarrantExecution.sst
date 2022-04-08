@@ -14,6 +14,8 @@ Knowledge: msg:bytes@Source,
            pkd:pkey@Auditor = pk(skd);
 Types: bytes, pkey, skey, mpkeyi, mskeyi, skeyi, rand;
 Functions: OK() -> bytes,
+           APPROVE() -> bytes,
+           REJECT() -> bytes,
            pk(skey) -> pkey,
            enc(pkey, bytes, rand) -> bytes,
            dec(skey, bytes) -> bytes,
@@ -43,14 +45,41 @@ Equations: dec(k, enc(pk(k), m, r)) = m,
            encunwrap(encwrap(id, r)) = <id, r>,
            signunwrap(signwrap(a, c, z)) = <a, c, z>;
 Formats: PKIBEFORM(mpkeyi), PKFORM(pkey);
-Events: OkCourt(), OKaud(bytes), KOaud(bytes), OKdec(bytes);
-Queries: event(OkCourt()), event(OKaud(enc(pk(k), OK(), r))), event(KOaud(idi)), event(OKdec(ctc));
+Events: OKcourt(), OKaud(bytes), KOaud(bytes), OKdec(bytes);
+Queries: event(OKcourt()), 
+         event(OKaud(enc(pk(k), OK(), r))), 
+         event(KOaud(idi)), 
+         event(OKdec(ctc)),
+         event(OKaud(enc(pk(k), OK(), r))) & event(KOaud(idi));
 Protocol:
 Source -> Public: mpkform = PKIBEFORM<mpk>
 Court -> Public: pkaform = PKFORM<pka>
 Decryptor -> Public: pkcform = PKFORM<pkc>
 Auditor -> Public: pkdform = PKFORM<pkd>
 let G = {
+    Court *->* Decryptor: status = status
+    Court *->* Auditor: status = status
+    Court *->* Public: status = status
+    Court {
+        if (status = REJECT()) {
+            end
+        }
+    }
+    Decryptor {
+        if (status = REJECT()) {
+            end
+        }
+    }
+    Auditor {
+        if (status = REJECT()) {
+            end
+        }
+    }
+    Public {
+        if (status = REJECT()) {
+            end
+        }
+    }
     Court {
         new r: rand;
         let ctc = enc(pka, id, r);
@@ -69,7 +98,7 @@ let G = {
         let ctc = checksign(signed_ctc, pkc);
         let audit = checksign(signed_audit, pkc);
         new p: bytes;
-        let partial = if(checkzkpokenc(ctc, pzkenc) = OK() & checkzkpok(b, pzk) = OK(), pextract(msk, b), p);
+        let partial = if((checkzkpokenc(ctc, pzkenc) = OK()) & (checkzkpok(b, pzk) = OK()), pextract(msk, b), p);
         let dsign = sign(skd, signwrap(audit, ctc, pzkenc));
     }
     Decryptor *->* Court: partial = partial
@@ -77,7 +106,7 @@ let G = {
     Court {
         let sk = bextract(r, partial);
         let m = decibe(ct, sk);
-        event OkCourt();
+        event OKcourt();
     }
     Auditor -> Public: auditableproof1 = <ctcsign, dsign>
     Auditor {
@@ -94,14 +123,15 @@ Source {
 }
 Source *->* Court: ct = ct
 Source -> Public: ct = ct
-Court -> Judge {
-    Left:
-        Judge -> Court {
-            Left:
-                G()
-            Right: end
-        }
-        end
-    Right: end
+Court {
+    let status = APPROVE();
 }
-end
+Court -> Judge {
+    Approve:
+        G()
+    Reject:
+        Court {
+            let status = REJECT();
+        }
+        G()
+}

@@ -155,6 +155,7 @@ let_bind:
   { IfBlock(cond, then_body, else_body) }
 | IF; LEFT_PAR; cond = term; RIGHT_PAR; LEFT_BRACE; then_body = let_bind; RIGHT_BRACE
   { IfBlock(cond, then_body, LetEnd) }
+| END { LetQuit }
 | { LetEnd };
 
 channel_option:
