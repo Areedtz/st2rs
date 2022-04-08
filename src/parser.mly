@@ -14,33 +14,41 @@
 %%
 
 opt_knowledge:
-| KNOWLEDGE; COLON; k = separated_list(COMMA, indef); SEMI; { k }
+| KNOWLEDGE; COLON; k = separated_nonempty_list(COMMA, indef); SEMI; { k }
+| { [] }
+
+opt_functions:
+| FUNCTIONS; COLON; f = separated_nonempty_list(COMMA, fundef); SEMI; { f }
+| { [] }
+
+opt_equations:
+| EQUATIONS; COLON; e = separated_nonempty_list(COMMA, eqdef); SEMI; { e }
 | { [] }
 
 opt_formats:
-| FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI; { formats }
+| FORMATS; COLON; formats = separated_nonempty_list(COMMA, format_def); SEMI; { formats }
 | { [] }
 
 opt_events:
-| EVENTS; COLON; e = separated_list(COMMA, evdef); SEMI; { e }
+| EVENTS; COLON; e = separated_nonempty_list(COMMA, evdef); SEMI; { e }
 | { [] }
 
 opt_queries:
-| QUERIES; COLON; q = separated_list(COMMA, qdef); SEMI; { q }
+| QUERIES; COLON; q = separated_nonempty_list(COMMA, qdef); SEMI; { q }
 | { [] }
 
 program:
 | PROBLEM; COLON; n = ID; SEMI;
-  PRINCIPALS; COLON; p = separated_list(COMMA, prindef); SEMI;
+  PRINCIPALS; COLON; p = separated_nonempty_list(COMMA, prindef); SEMI;
   k = opt_knowledge;
-  TYPES; COLON; t = separated_list(COMMA, data_type); SEMI;
-  FUNCTIONS; COLON; f = separated_list(COMMA, fundef); SEMI;
-  EQUATIONS; COLON; e = separated_list(COMMA, eqdef); SEMI;
+  TYPES; COLON; t = separated_nonempty_list(COMMA, data_type); SEMI;
+  functions = opt_functions;
+  equations = opt_equations;
   formats = opt_formats;
   events = opt_events;
   queries = opt_queries;
   PROTOCOL; COLON; g = global_type; EOF
-{ Some { name = n; principals = p; knowledge = k; types = t; functions = f; equations = e; formats = formats; events = events; queries = queries; protocol = g } };
+{ Some { name = n; principals = p; knowledge = k; types = t; functions = functions; equations = equations; formats = formats; events = events; queries = queries; protocol = g } };
 
 fundef:
 | f = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR; ARROW; return_type = data_type { (f, (params, return_type, false, [])) }

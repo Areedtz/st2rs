@@ -245,10 +245,10 @@ let proverif (pr:problem): unit =
   if List.length pr.formats > 0 then printf "%s\n" "";
   List.iter (fun t -> 
     printf "%s.\n" (show_function t)) pr.functions;
-  printf "%s\n" "";
+  if List.length pr.functions > 0 then printf "%s\n" "";
   List.iter (fun e -> 
     printf "%s.\n" (show_equation e function_types)) pr.equations;
-  printf "%s\n" "";
+    if List.length pr.equations > 0 then printf "%s\n" "";
   List.iter (fun e -> 
     printf "%s.\n" (show_event_def e)) pr.events;
   if List.length pr.events > 0 then printf "%s\n" "";
