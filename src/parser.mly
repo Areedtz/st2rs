@@ -56,18 +56,22 @@ indef:
 evdef:
 | e = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR { (e, params) }
 
+hdef:
+| LEFT_PAR; q = hdef; RIGHT_PAR { q }
+| event = event; BIGARROW; q = hdef; { CorrQuery([event], q) }
+| event = event { ReachQuery([event], Conjunction) }
+| event = event; AND; events = separated_nonempty_list(AND, event) { ReachQuery(event::events, Conjunction) }
+| event = event; OR; events = separated_nonempty_list(OR, event) { ReachQuery(event::events, Disjunction) }
+
 qdef:
-| events = event_list; BIGARROW; q = qdef { CorrQuery(events, q) }
-| event = event { ReachQuery(event) }
+| events = separated_nonempty_list(AND, event) { ReachQuery(events, Conjunction) }
+| events = separated_nonempty_list(AND, event); BIGARROW; q = hdef { CorrQuery(events, q) }
 
 event:
 | INJ_EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
   { InjEvent(e, args) }
 | EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
   { NonInjEvent(e, args) }
-
-event_list:
-| l = separated_list(AND, event) { l }
 
 prindef:
 | name = ID; LEFT_BRACK; DISHONEST; RIGHT_BRACK
@@ -77,7 +81,6 @@ prindef:
 
 format_def:
 | f = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR { (f, params) }
-
 
 (* Choose? *)
 term:

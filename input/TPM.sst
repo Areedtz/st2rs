@@ -31,7 +31,7 @@ Events:  revealed(bytes),
          not_revealed(bytes);
 Queries: event(revealed(secr)), 
          event(not_revealed(secr)),
-         (event(not_revealed(secr)) & event(revealed(secr)));
+         event(not_revealed(secr)) & event(revealed(secr));
 Protocol:
 TPM {
     new pcr: bytes;

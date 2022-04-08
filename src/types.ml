@@ -59,12 +59,16 @@ type channel_option =
   | Conf
   | AuthConf
 
+type event_list_type =
+  Conjunction
+  | Disjunction
+
 type event =
   NonInjEvent of ident * term list
   | InjEvent of ident * term list
-  
+
 type query =
-  ReachQuery of event
+  ReachQuery of event list * event_list_type
   | CorrQuery of event list * query
 
 (* Global types: p -> q *)
