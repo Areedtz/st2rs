@@ -124,7 +124,7 @@ Source {
 Source *->* Court: ct = ct
 Source -> Public: ct = ct
 Court {
-    let status = APPROVE();
+    let status = APPROVE(); # Set the initial status as 'approve'
 }
 Court -> Judge {
     Approve:
