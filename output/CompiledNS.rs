@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 extern crate session_types;
 use session_types::*;
 use std::{marker};
