@@ -1,56 +1,58 @@
-Problem: NeedhamSchroeder;
+Problem: NeedhamSchroederLowe;
 Principals: A, B, Public;
-Knowledge: ska:skey@A,
+Knowledge: ida:id@A,
+           idb:id@A,
+           idb:id@B,
+           ida:id@B,
+           ska:skey@A,
            skb:skey@B,
-           idb:id@A = sk2id(skb),
-           ida:id@Public = sk2id(ska),
-           idb:id@Public = sk2id(skb),
+           pka:pkey@B = pk(ska),
            pka:pkey@Public = pk(ska),
            pkb:pkey@Public = pk(skb);
 Types: id, bytes, skey, pkey;
 Functions: pk(skey) -> pkey,
-           sk2id(skey) -> id,
-           id2pk(id) -> pkey,
            aenc(pkey, bytes) -> bytes,
            adec(skey, bytes) -> bytes,
            nawrap(id, bytes) -> bytes,
            naunwrap(bytes) -> <id, bytes>,
-           nanbwrap(bytes, bytes) -> bytes,
-           nanbunwrap(bytes) -> <bytes, bytes>; 
-Equations: id2pk(sk2id(k)) = pk(k),
-           adec(k, aenc(pk(k), m)) = m,
+           nanbwrap(id, bytes, bytes) -> bytes,
+           nanbunwrap(bytes) -> <id, bytes, bytes>; 
+Equations: adec(k, aenc(pk(k), m)) = m,
            naunwrap(nawrap(idp, nonce)) = <idp, nonce>,
-           nanbunwrap(nanbwrap(nonce1, nonce2)) = <nonce1, nonce2>;
+           nanbunwrap(nanbwrap(idp, nonce1, nonce2)) = <idp, nonce1, nonce2>;
 Events:  start_a(id, id, bytes),
+         mid_a(id, id, bytes, bytes), 
          end_a(id, id, bytes, bytes),
          start_b(id, id, bytes, bytes),
          end_b(id, id, bytes, bytes);
+         # dishonest_k(pkey);
 Queries: event(start_a(ida, idb, na)),
+         event(mid_a(ida, idb, na, nb)),
          event(end_a(ida, idb, na, nb)),
          event(start_b(ida, idb, na, nb)),
          event(end_b(ida, idb, na, nb)),
          event(end_a(ida, idb, na, nb)) => event(start_b(ida, idb, na, nb)),
-         event(end_b(ida, idb, na, nb)) => event(start_a(ida, idb, na));         
+        # event(end_a(ida, idb, na, nb)) => (event(start_b(ida, idb, na, nb)) | event(dishonest_k(pka)) | event(dishonest_k(pkb))),
+         event(end_b(ida, idb, na, nb)) => event(start_a(ida, idb, na));
+        # event(end_b(ida, idb, na, nb)) => event(mid_a(ida, idb, na, nb)) | event(dishonest_k(pka)) | event(dishonest_k(pkb)));
 Protocol:
 Public -> A: pkx = pkb
 A {
     new na: bytes;
-    let ida = sk2id(ska);
     event start_a(ida, idb, na);
     let ct = aenc(pkx, nawrap(ida, na));
 }
 A -> B: cta = ct
 B {
-    let <idx: id, na: bytes> = naunwrap(adec(skb, cta));
+    let <%ida, na: bytes> = naunwrap(adec(skb, cta));
     new nb: bytes;
-    let idb = sk2id(skb);
-    event start_b(idx, idb, na, nb);
-    let pka = id2pk(idx);
-    let ct = aenc(pka, nanbwrap(na, nb));
+    event start_b(ida, idb, na, nb);
+    let ct = aenc(pka, nanbwrap(idb, na, nb));
 }
 B -> A: ctb = ct
 A {
-    let <x_na: bytes, x_nb: bytes> = nanbunwrap(adec(ska, ctb));
+    let <%idb, x_na: bytes, x_nb: bytes> = nanbunwrap(adec(ska, ctb));
+    event mid_a(ida, idb, x_na, x_nb);
     new enc_nb: bytes;
     if (x_na = na) {
         let enc_nb = aenc(pkx, x_nb);
@@ -61,7 +63,7 @@ A -> B: z = enc_nb
 B {
     let z_nb = adec(skb, z);
     if (z_nb = nb) {
-        event end_b(idx, idb, na, nb);
+        event end_b(ida, idb, na, nb);
     }
 }
 end
