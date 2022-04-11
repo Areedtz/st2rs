@@ -331,7 +331,7 @@ let check_event_types env evs forms funs name terms =
     match List.assoc_opt name evs with
     | Some(types) -> types
     | None -> raise (SyntaxError(sprintf "Event %s was not defined before being used" name)) in
-  if List.length event_types <> List.length terms then raise (SyntaxError(sprintf "Too many params passed to event %s" name));
+  if List.length event_types <> List.length terms then raise (SyntaxError(sprintf "Wrong number of params passed to event %s" name));
   List.iteri (fun i t -> if List.nth event_types i <> get_term_type env forms funs t then raise (TypeError(sprintf "Term %s doesn't match type %s" (show_term t) (show_dtype (List.nth event_types i))))) terms
 
 let check_principle_exists principals p =
