@@ -212,11 +212,13 @@ let rec find_branch_functions = function
   | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_branch_functions next
   | LCall(name, params, next) -> find_branch_functions next@[(name, (params, next))]
   | LIf(_, nextthen, nextelse) ->
+    let branches_then = find_branch_functions nextthen in
+    let branches_else = find_branch_functions nextelse in
     begin
-      match (nextthen, nextelse) with
-      | (LQuit, LQuit) -> []
-      | (LQuit, _) -> find_branch_functions nextelse
-      | (_, _) -> find_branch_functions nextthen
+      match (branches_then, branches_else) with
+      | ([], []) -> []
+      | ([], _) -> branches_else
+      | (_, _) -> branches_then
     end
   | LQuit | LLocalEnd -> []
 

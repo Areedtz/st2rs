@@ -1,8 +1,11 @@
 Problem: DigitalEnvelopeWithTPM;
 Principals: Alice, Parent, TPM;
-Knowledge: tpmsk:skey@TPM,
-           tpmpk:pkey@Alice = pk(tpmsk),
-           tpmpk:pkey@Parent = pk(tpmsk);
+Knowledge: tpmsignsk:skey@TPM,
+           tpmencsk:skey@TPM,
+           tpmsignpk:pkey@Alice = pk(tpmsignsk),
+           tpmsignpk:pkey@Parent = pk(tpmsignsk),
+           tpmencpk:pkey@Alice = pk(tpmencsk),
+           tpmencpk:pkey@Parent = pk(tpmencsk);
 Types: pkey, skey, symkey, bytes;
 Functions: pk(skey) -> pkey,
            sign(bytes, skey) -> bytes,
@@ -27,11 +30,8 @@ Equations: checksign(sign(m, k), pk(k)) = m,
            symkeyunwrapper(symkeywrapper(k)) = k,
            bytesbytesunwrapper(bytesbyteswrapper(b1, b2)) = <b1, b2>,
            pkeybytesunwrapper(pkeybyteswrapper(k, b)) = <k, b>;
-Events:  revealed(bytes),
-         not_revealed(bytes);
-Queries: event(revealed(secr)), 
-         event(not_revealed(secr)),
-         event(not_revealed(secr)) & event(revealed(secr));
+Events: revealed(bytes);
+Queries: event(revealed(dec_secr));
 Protocol:
 TPM {
     new pcr: bytes;
@@ -41,9 +41,9 @@ Alice {
     new na: bytes;
     new sesk_a: symkey;
 }
-Alice -> TPM: enc_sesk_a = aenc(symkeywrapper(sesk_a), tpmpk)
+Alice -> TPM: enc_sesk_a = aenc(symkeywrapper(sesk_a), tpmencpk)
 TPM {
-    let sesk_a = symkeyunwrapper(adec(enc_sesk_a, tpmsk));
+    let sesk_a = symkeyunwrapper(adec(enc_sesk_a, tpmencsk));
     new sesid_a: bytes;
 }
 TPM -> Alice: sesid_a = sesid_a
@@ -56,39 +56,35 @@ Alice {
     let h_obt = hash(OBT(), hash(na, pcr));
 }
 Alice -> TPM: h_obt = h_obt
-TPM -> Alice: sign_obtk = sign(pkeybyteswrapper(pk(genkey(tpmsk, h_obt)), h_obt), tpmsk)
+TPM -> Alice: sign_obtk = sign(pkeybyteswrapper(pk(genkey(tpmencsk, h_obt)), h_obt), tpmsignsk)
 Alice {
-    let <obtk: pkey, %h_obt> = pkeybytesunwrapper(checksign(sign_obtk, tpmpk));
+    let <obtk: pkey, %h_obt> = pkeybytesunwrapper(checksign(sign_obtk, tpmsignpk));
     new secr: bytes;
 }
 Alice -> Parent: envlp = aenc(secr, obtk)
 Parent {
     new sesk_p: symkey;
 }
-Parent -> TPM: enc_sesk_p = aenc(symkeywrapper(sesk_p), tpmpk)
+Parent -> TPM: enc_sesk_p = aenc(symkeywrapper(sesk_p), tpmencpk)
 TPM {
     new sesid_a: bytes;
 }
 TPM -> Parent: sesid_a = sesid_a
+Parent -> TPM: envlp = envlp
 TPM -> Parent {
     Refuse:
         TPM {
             let pcr = hash(REF(), pcr);
         }
-        Parent -> TPM: envlp = envlp
-        TPM -> Parent: quote = sign(bytesbyteswrapper(pcr, envlp), tpmsk)
-        TPM {
-            event not_revealed(adec(envlp, genkey(tpmsk, pcr)));
-        }
+        TPM -> Parent: quote = sign(bytesbyteswrapper(pcr, envlp), tpmsignsk)
         end
     Obtain:
         TPM {
             let pcr = hash(OBT(), pcr);
         }
-        Parent -> TPM: envlp = envlp
-        TPM *->* Parent: secr = adec(envlp, genkey(tpmsk, pcr))
         TPM {
-            event revealed(adec(envlp, genkey(tpmsk, pcr)));
+            event revealed(adec(envlp, genkey(tpmencsk, pcr)));
         }
+        TPM *->* Parent: secr = adec(envlp, genkey(tpmencsk, pcr))
         end
 }
