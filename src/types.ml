@@ -301,7 +301,7 @@ let rec get_pattern_types env forms funs = function
      | Some(dtypes) -> 
        let argtypes = List.flatten (List.map (fun arg -> get_pattern_types env forms funs arg) args) in
        let combinetypes = List.combine argtypes dtypes in
-       List.map (fun ((x, dt), fdt) ->
+       (f, DFType f)::List.map (fun ((x, dt), fdt) ->
          if dt <> DNone && dt <> fdt
            then raise (TypeError(sprintf "Variable %s is used as %s, but was previously assigned as %s" x (show_dtype fdt) (show_dtype dt)))
            else (x, fdt)
@@ -386,7 +386,7 @@ let rec get_free_variables gfuns reserved princ gt acc =
       | IfBlock(cond, thenb, elseb) ->
         let newacc = get_term_variables cond@acc in
         inner reserved thenb (inner reserved elseb newacc)
-      | LetQuit -> acc
+      | LetQuit -> List.filter (fun x -> not(List.exists (fun y -> x = y) reserved)) acc
       | LetEnd -> get_free_variables gfuns reserved princ g acc in
     inner reserved letb acc
  | Compute(_, _, g) -> get_free_variables gfuns reserved princ g acc
@@ -425,8 +425,9 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
        let ptypes = get_pattern_types (get_penv inner_env p) forms funs pattern in
        let ttype = get_term_type (get_penv inner_env p) forms funs term in
        let inner_env' = if List.length ptypes == 1 then
-         if (snd (List.nth ptypes 0)) <> DNone && (snd (List.nth ptypes 0)) <> ttype then
-           raise (TypeError(sprintf "Mismatching types in left and right hand parts of assignment"))
+         if (snd (List.nth ptypes 0)) <> DNone && (snd (List.nth ptypes 0)) <> ttype then begin
+           printf "%s" (show_dtype (ttype));
+           raise (TypeError(sprintf "Mismatching types in left and right hand parts of assignment")) end
          else 
            safe_update p (fst (List.nth ptypes 0)) ttype inner_env
        else
@@ -438,8 +439,10 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
              else 
                safe_update p (fst ptype) unpacktype acc
            ) inner_env ptypes unpacked
-         else
-           raise (SyntaxError(sprintf "Could not match left hand side of assignment to right hand side of assignment, mismatching number of variables")) in
+         else 
+          match ptypes with
+          | ((_, t))::xs when t = ttype -> List.fold_left (fun acc ptype -> safe_update p (fst ptype) (snd ptype) acc) inner_env ptypes
+          | _ -> raise (SyntaxError(sprintf "Could not match left hand side of assignment to right hand side of assignment, mismatching number of variables")) in
        if p = princ then 
          LLet(pattern, term, compile_letb inner_env' return_type next)
        else 
