@@ -3,7 +3,6 @@ Principals: Alice, Parent, TPM;
 Knowledge: tpmsignsk:skey@TPM,
            tpmencsk:skey@TPM,
            tpmsignpk:pkey@Alice = pk(tpmsignsk),
-           tpmsignpk:pkey@Parent = pk(tpmsignsk),
            tpmencpk:pkey@Alice = pk(tpmencsk),
            tpmencpk:pkey@Parent = pk(tpmencsk);
 Types: pkey, skey, symkey, bytes;
@@ -67,9 +66,9 @@ Parent {
 }
 Parent -> TPM: enc_sesk_p = aenc(symkeywrapper(sesk_p), tpmencpk)
 TPM {
-    new sesid_a: bytes;
+    new sesid_p: bytes;
 }
-TPM -> Parent: sesid_a = sesid_a
+TPM -> Parent: sesid_p = sesid_p
 Parent -> TPM: envlp = envlp
 TPM -> Parent {
     Refuse:

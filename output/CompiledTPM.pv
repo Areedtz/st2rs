@@ -64,11 +64,11 @@ let Alice(tpmencpk: pkey, tpmsignpk: pkey) =
 	out(c, aenc(secr, obtk));
 	0.
 
-let Parent(c_ParentTPM_priv: channel, tpmencpk: pkey, tpmsignpk: pkey) = 
+let Parent(c_ParentTPM_priv: channel, tpmencpk: pkey) = 
 	in(c, envlp: bytes);
 	new sesk_p: symkey;
 	out(c, aenc(symkeywrapper(sesk_p), tpmencpk));
-	in(c, sesid_a: bytes);
+	in(c, sesid_p: bytes);
 	out(c, envlp);
 	in(c, branchchoice: bitstring);
 	(
@@ -96,8 +96,8 @@ let TPM(c_ParentTPM_priv: channel, tpmencsk: skey, tpmsignsk: skey) =
 	in(c, h_obt: bytes);
 	out(c, sign(pkeybyteswrapper(pk(genkey(tpmencsk, h_obt)), h_obt), tpmsignsk));
 	in(c, enc_sesk_p: bytes);
-	new sesid_a: bytes;
-	out(c, sesid_a);
+	new sesid_p: bytes;
+	out(c, sesid_p);
 	in(c, envlp: bytes);
 	in(c, branchchoice: bitstring);
 	(
@@ -126,6 +126,6 @@ process (
 	out(c, c_ParentTPM_priv);
 
 	Alice(tpmencpk, tpmsignpk) |
-	Parent(c_ParentTPM_priv, tpmencpk, tpmsignpk) |
+	Parent(c_ParentTPM_priv, tpmencpk) |
 	TPM(c_ParentTPM_priv, tpmencsk, tpmsignsk)
 )
