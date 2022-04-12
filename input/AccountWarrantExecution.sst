@@ -16,6 +16,7 @@ Types: bytes, pkey, skey, mpkeyi, mskeyi, skeyi, rand;
 Functions: OK() -> bytes,
            APPROVE() -> bytes,
            REJECT() -> bytes,
+           ZKPFAIL() -> bytes,
            pk(skey) -> pkey,
            enc(pkey, bytes, rand) -> bytes,
            dec(skey, bytes) -> bytes,
@@ -45,38 +46,47 @@ Equations: dec(k, enc(pk(k), m, r)) = m,
            encunwrap(encwrap(id, r)) = <id, r>,
            signunwrap(signwrap(a, c, z)) = <a, c, z>;
 Formats: PKIBEFORM(mpkeyi), PKFORM(pkey);
-Events: OKcourt(), OKaud(bytes), KOaud(bytes), OKdec(bytes);
-Queries: event(OKcourt()), 
-         event(OKaud(enc(pk(k), OK(), r))), 
-         event(KOaud(idi)), 
-         event(OKdec(ctc)),
-         event(OKaud(enc(pk(k), OK(), r))) & event(KOaud(idi));
+Events: SourceEnd(bytes), JudgeApprove(bytes), 
+        JudgeReject(bytes), CourtKill(bytes), 
+        DecryptorKill(bytes), AuditorKill(bytes), 
+        DecryptorZKPFail(bytes, bytes, bytes), CourtEnd(bytes, bytes);
+Queries: event(SourceEnd(ct)),
+
+         event(JudgeApprove(status)),
+         event(JudgeReject(status)),
+         event(JudgeApprove(status)) & event(JudgeReject(status)),
+
+         # If protocol was killed, it was because Judge rejected the warrant or Decryptor check for ZKP failed
+         event(CourtKill(status)) & event(DecryptorKill(status)) & event (AuditorKill(status)),
+         event(CourtKill(status)) & event(DecryptorKill(status)) & event (AuditorKill(status)) => event(JudgeReject(status)) | event(DecryptorZKPFail(status, pkzenc, pzk)), 
+
+         # If Court ended, it was with the same ciphertext as the one supplied by Source, and Judge approved the warrant
+         event(CourtEnd(status, ct)),
+         event(CourtEnd(status, ct)) => event(JudgeApprove(status)) & event(SourceEnd(ct));
 Protocol:
 Source -> Public: mpkform = PKIBEFORM<mpk>
 Court -> Public: pkaform = PKFORM<pka>
 Decryptor -> Public: pkcform = PKFORM<pkc>
 Auditor -> Public: pkdform = PKFORM<pkd>
 let G = {
+    Judge *->* Court: status = status
     Court *->* Decryptor: status = status
     Court *->* Auditor: status = status
-    Court *->* Public: status = status
     Court {
         if (status = REJECT()) {
+            event CourtKill(status);
             end
         }
     }
     Decryptor {
         if (status = REJECT()) {
+            event DecryptorKill(status);
             end
         }
     }
     Auditor {
         if (status = REJECT()) {
-            end
-        }
-    }
-    Public {
-        if (status = REJECT()) {
+            event AuditorKill(status);
             end
         }
     }
@@ -97,8 +107,34 @@ let G = {
         let <b: bytes, pzk: bytes, signed_ctc: bytes, signed_audit: bytes, pzkenc: bytes> = drequest;
         let ctc = checksign(signed_ctc, pkc);
         let audit = checksign(signed_audit, pkc);
-        new p: bytes;
-        let partial = if((checkzkpokenc(ctc, pzkenc) = OK()) & (checkzkpok(b, pzk) = OK()), pextract(msk, b), p);
+        if ((checkzkpokenc(ctc, pzkenc) = OK()) & (checkzkpok(b, pzk) = OK())) {
+            let status = APPROVE();
+        } else {
+            let status = ZKPFAIL();
+        }
+    }
+    Decryptor *->* Court: status = status
+    Decryptor *->* Auditor: status = status
+    Decryptor {
+        if (status = ZKPFAIL()) {
+            event DecryptorKill(status);
+            end
+        }
+    }
+    Court {
+        if (status = ZKPFAIL()) {
+            event CourtKill(status);
+            end
+        }
+    }
+    Auditor {
+        if (status = ZKPFAIL()) {
+            event AuditorKill(status);
+            end
+        }
+    }
+    Decryptor {
+        let partial = pextract(msk, b);
         let dsign = sign(skd, signwrap(audit, ctc, pzkenc));
     }
     Decryptor *->* Court: partial = partial
@@ -106,7 +142,7 @@ let G = {
     Court {
         let sk = bextract(r, partial);
         let m = decibe(ct, sk);
-        event OKcourt();
+        event CourtEnd(status, ct);
     }
     Auditor -> Public: auditableproof1 = <ctcsign, dsign>
     Auditor {
@@ -120,18 +156,23 @@ let G = {
 } in
 Source {
     let ct = encibe(mpk, id, msg);
+    event SourceEnd(ct);
 }
 Source *->* Court: ct = ct
 Source -> Public: ct = ct
-Court {
+Judge {
     let status = APPROVE(); # Set the initial status as 'approve'
 }
 Court -> Judge {
     Approve:
+        Judge {
+            event JudgeApprove(status);
+        }
         G()
     Reject:
-        Court {
+        Judge {
             let status = REJECT();
+            event JudgeReject(status);
         }
         G()
 }
