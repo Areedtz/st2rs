@@ -5,31 +5,35 @@ Knowledge: tpmsignsk:skey@TPM,
            tpmsignpk:pkey@Alice = pk(tpmsignsk),
            tpmencpk:pkey@Alice = pk(tpmencsk),
            tpmencpk:pkey@Parent = pk(tpmencsk);
-Types: pkey, skey, symkey, bytes;
+Types: pkey, skey, symkey, bytes, stpkey, stskey;
 Functions: pk(skey) -> pkey,
+           stpk(stskey) -> stpkey,
            sign(bytes, skey) -> bytes,
            checksign(bytes, pkey) -> bytes,
            aenc(bytes, pkey) -> bytes,
            adec(bytes, skey) -> bytes,
+           staenc(bytes, stpkey) -> bytes,
+           stadec(bytes, stskey) -> bytes,
            senc(bytes, symkey) -> bytes,
            sdec(bytes, symkey) -> bytes,
            hash(bytes, bytes) -> bytes,
-           genkey(skey, bytes) -> skey, # Is the order here correct?
+           genkey(skey, bytes) -> stskey, # Is the order here correct?
            symkeywrapper(symkey) -> bytes,
            symkeyunwrapper(bytes) -> symkey,
            bytesbyteswrapper(bytes, bytes) -> bytes,
            bytesbytesunwrapper(bytes) -> <bytes, bytes>,
-           pkeybyteswrapper(pkey, bytes) -> bytes,
-           pkeybytesunwrapper(bytes) -> <pkey, bytes>,
+           pkeybyteswrapper(stpkey, bytes) -> bytes,
+           pkeybytesunwrapper(bytes) -> <stpkey, bytes>,
            OBT() -> bytes,
            REF() -> bytes;
 Equations: checksign(sign(m, k), pk(k)) = m,
            adec(aenc(m, pk(k)), k) = m,
+           stadec(staenc(m, stpk(k)), k) = m,
            sdec(senc(m, k), k) = m,
            symkeyunwrapper(symkeywrapper(k)) = k,
            bytesbytesunwrapper(bytesbyteswrapper(b1, b2)) = <b1, b2>,
            pkeybytesunwrapper(pkeybyteswrapper(k, b)) = <k, b>;
-Events: revealed(bytes);
+Events:  revealed(bytes);
 Queries: event(revealed(dec_secr));
 Protocol:
 TPM {
@@ -55,12 +59,12 @@ Alice {
     let h_obt = hash(OBT(), hash(na, pcr));
 }
 Alice -> TPM: h_obt = h_obt
-TPM -> Alice: sign_obtk = sign(pkeybyteswrapper(pk(genkey(tpmencsk, h_obt)), h_obt), tpmsignsk)
+TPM -> Alice: sign_obtk = sign(pkeybyteswrapper(stpk(genkey(tpmencsk, h_obt)), h_obt), tpmsignsk)
 Alice {
-    let <obtk: pkey, %h_obt> = pkeybytesunwrapper(checksign(sign_obtk, tpmsignpk));
+    let <obtk: stpkey, %h_obt> = pkeybytesunwrapper(checksign(sign_obtk, tpmsignpk));
     new secr: bytes;
 }
-Alice -> Parent: envlp = aenc(secr, obtk)
+Alice -> Parent: envlp = staenc(secr, obtk)
 Parent {
     new sesk_p: symkey;
 }
@@ -82,8 +86,8 @@ TPM -> Parent {
             let pcr = hash(OBT(), pcr);
         }
         TPM {
-            event revealed(adec(envlp, genkey(tpmencsk, pcr)));
+            event revealed(stadec(envlp, genkey(tpmencsk, pcr)));
         }
-        TPM *->* Parent: secr = adec(envlp, genkey(tpmencsk, pcr))
+        TPM *->* Parent: secr = stadec(envlp, genkey(tpmencsk, pcr))
         end
 }

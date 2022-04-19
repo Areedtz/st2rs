@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 extern crate session_types;
 use session_types::*;
 use std::{marker};
@@ -5,8 +7,11 @@ use serde::{Serialize, Deserialize};
 use std::thread;
 use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
+use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme};
 use rand::rngs::OsRng;
+use rand::rngs::StdRng;
 use rand::RngCore;
+use rand::SeedableRng;
 use openssl::bn::BigNum;
 use openssl::pkey::{Public, Private};
 use openssl::rsa::{Rsa, Padding};
@@ -44,6 +49,8 @@ type pkey = Rsa<Public>;
 type skey = Rsa<Private>;
 type symkey = [u8; 16];
 type bytes = Vec<u8>;
+type stpkey = RsaPublicKey;
+type stskey = RsaPrivateKey;
 
 fn pk(a1: &skey) -> pkey {
 	// Seemingly the only way to specifically generate a public key
@@ -52,6 +59,9 @@ fn pk(a1: &skey) -> pkey {
 	let e: BigNum = a1.e() + &(BigNum::new().unwrap());
 
 	return Rsa::from_public_components(n, e).unwrap()
+}
+fn stpk(a1: stskey) -> stpkey {
+	return RsaPublicKey::from(a1)
 }
 fn sign(a1: bytes, a2: &skey) -> bytes {
 	let mut buf = vec![0; a2.size() as usize];
@@ -89,6 +99,15 @@ fn adec(a1: bytes, a2: &skey) -> bytes {
 	buf.truncate(i + 1);
 	return buf
 }
+fn staenc(a1: bytes, a2: &stpkey) -> bytes {
+	let mut rng = OsRng;
+	let padding = PaddingScheme::new_pkcs1v15_encrypt();
+	return a2.encrypt(&mut rng, padding, &a1[..]).expect("failed to encrypt")
+}
+fn stadec(a1: bytes, a2: &stskey) -> bytes {
+	let padding = PaddingScheme::new_pkcs1v15_encrypt();
+	return a2.decrypt(padding, &a1).expect("failed to decrypt")
+}
 fn senc(a1: bytes, a2: symkey) -> bytes {
 	let mut iv: [u8; 16] = [0; 16];
 	let mut rng = OsRng;
@@ -112,17 +131,12 @@ fn hash(a1: bytes, a2: bytes) -> bytes {
 
 	return openhash(MessageDigest::sha256(), &a[..]).unwrap().to_vec();
 }
-fn genkey(a1: &skey, a2: bytes) -> skey {
-	/**
-	let a = sign(a2, a1);
+fn genkey(a1: &skey, a2: bytes) -> stskey {
+	let a = hash(a2, a1.private_key_to_pem().unwrap());
 	let buf: [u8; 32] = a.try_into()
         .unwrap_or_else(|a: Vec<u8>| panic!("Expected a Vec of length {} but it was {}", 32, a.len()));
 	let mut rng = StdRng::from_seed(buf);
 	return RsaPrivateKey::new(&mut rng, 2048).expect("failed to generate a private key");
-	*/
-
-	// Add some kind of seeding using a1 and a2 if possible
-	return fresh_skey(2048);
 }
 fn symkeywrapper(a1: symkey) -> bytes {
 	return bincode::serialize(&a1).unwrap()
@@ -136,16 +150,11 @@ fn bytesbyteswrapper(a1: bytes, a2: bytes) -> bytes {
 fn bytesbytesunwrapper(a1: bytes) -> (bytes, bytes) {
 	return bincode::deserialize(&a1).unwrap()
 }
-fn pkeybyteswrapper(a1: pkey, a2: bytes) -> bytes {
-	// Rsa<Public> doesn't have a serializer, so we manually
-	// need to convert it into something than can be serialized
-	let pubkeybytes = a1.public_key_to_pem().unwrap();
-	return bincode::serialize(&(pubkeybytes, a2)).unwrap()
+fn pkeybyteswrapper(a1: stpkey, a2: bytes) -> bytes {
+	return bincode::serialize(&(a1, a2)).unwrap()
 }
-fn pkeybytesunwrapper(a1: bytes) -> (pkey, bytes) {
-	let (pubkeybytes, b): (Vec<u8>, Vec<u8>) = bincode::deserialize(&a1).unwrap();
-	// We need to manually recreate the public key from the bytes
-	return (Rsa::public_key_from_pem(&pubkeybytes[..]).unwrap(), b)
+fn pkeybytesunwrapper(a1: bytes) -> (stpkey, bytes) {
+	return bincode::deserialize(&a1).unwrap()
 }
 fn OBT() -> bytes {
 	let buf: [u8; 32] = [13; 32];
@@ -174,6 +183,14 @@ fn fresh_bytes() -> bytes {
 	rng.fill_bytes(&mut buf);
 	return buf.to_vec()
 }
+fn fresh_stpkey() -> stpkey {
+	let sk = fresh_stskey();
+	return stpk(sk)
+}
+fn fresh_stskey() -> stskey {
+	let mut rng = OsRng;
+	return RsaPrivateKey::new(&mut rng, 2048).expect("failed to generate a private key");
+}
 
 #[cfg(test)]
 mod tests {
@@ -192,25 +209,31 @@ mod tests {
 	}
 	#[test]
 	fn test_equation_2() {
+		let k = fresh_stskey();
+		let m = fresh_bytes();
+		assert_eq!(stadec(staenc(m, stpk(k)), k), m);
+	}
+	#[test]
+	fn test_equation_3() {
 		let k = fresh_symkey();
 		let m = fresh_bytes();
 		assert_eq!(sdec(senc(m.clone(), k), k), m);
 	}
 	#[test]
-	fn test_equation_3() {
+	fn test_equation_4() {
 		let k = fresh_symkey();
 		assert_eq!(symkeyunwrapper(symkeywrapper(k.clone())), k);
 	}
 	
 	#[test]
-	fn test_equation_4() {
+	fn test_equation_5() {
 		let b1 = fresh_bytes();
 		let b2 = fresh_bytes();
 		assert_eq!(bytesbytesunwrapper(bytesbyteswrapper(b1.clone(), b2.clone())), (b1, b2));
 	}
 	
 	#[test]
-	fn test_equation_5() {
+	fn test_equation_6() {
 		let b = fresh_bytes();
 		let k = fresh_pkey();
 
@@ -234,7 +257,8 @@ fn alice(c_AliceTPM: Chan<(), AliceTPM>, c_AliceParent: Chan<(), AliceParent>, t
 	let (obtk, v0) = pkeybytesunwrapper(checksign(sign_obtk, tpmsignpk));
 	if h_obt == v0 {
 		let secr = fresh_bytes();
-		let c_AliceParent = send(c_AliceParent, aenc(secr, &obtk));
+		println!("Alice secret: {:?}", secr);
+		let c_AliceParent = send(c_AliceParent, staenc(secr, &obtk));
 		close(c_AliceParent);
 		close(c_AliceTPM);
 	};
@@ -242,6 +266,7 @@ fn alice(c_AliceTPM: Chan<(), AliceTPM>, c_AliceParent: Chan<(), AliceParent>, t
 
 fn parent(c_ParentAlice: Chan<(), ParentAlice>, c_ParentTPM: Chan<(), ParentTPM>, tpmencpk: &pkey) {
 	let (c_ParentAlice, envlp) = recv(c_ParentAlice);
+	println!("Parent envelope: {:?}", envlp);
 	let sesk_p = fresh_symkey();
 	let c_ParentTPM = send(c_ParentTPM, aenc(symkeywrapper(sesk_p), tpmencpk));
 	let (c_ParentTPM, sesid_p) = recv(c_ParentTPM);
@@ -249,6 +274,7 @@ fn parent(c_ParentAlice: Chan<(), ParentAlice>, c_ParentTPM: Chan<(), ParentTPM>
 
 	let c_ParentTPM = c_ParentTPM.sel2();
 	let (c_ParentTPM, secr) = recv(c_ParentTPM);
+	println!("Parent secret: {:?}", secr);
 	close(c_ParentTPM);
 	close(c_ParentAlice);
 }
@@ -265,11 +291,12 @@ fn tpm(c_TPMAlice: Chan<(), TPMAlice>, c_TPMParent: Chan<(), TPMParent>, tpmencs
 	if &sesid_a == &v1 {
 		let pcr = hash(na, pcr.to_vec());
 		let (c_TPMAlice, h_obt) = recv(c_TPMAlice);
-		let c_TPMAlice = send(c_TPMAlice, sign(pkeybyteswrapper(pk(&genkey(tpmencsk, h_obt.to_vec())), h_obt), tpmsignsk));
+		let c_TPMAlice = send(c_TPMAlice, sign(pkeybyteswrapper(stpk(genkey(tpmencsk, h_obt.to_vec())), h_obt), tpmsignsk));
 		let (c_TPMParent, enc_sesk_p) = recv(c_TPMParent);
 		let sesid_p = fresh_bytes();
 		let c_TPMParent = send(c_TPMParent, sesid_p);
 		let (c_TPMParent, envlp) = recv(c_TPMParent);
+		println!("TPM envelope: {:?}", envlp);
 		match c_TPMParent.offer() {
 			Left(c_TPMParent) => {
 				let pcr = hash(REF(), pcr);
@@ -279,7 +306,7 @@ fn tpm(c_TPMAlice: Chan<(), TPMAlice>, c_TPMParent: Chan<(), TPMParent>, tpmencs
 			},
 			Right(c_TPMParent) => {
 				let pcr = hash(OBT(), pcr);
-				let c_TPMParent = send(c_TPMParent, adec(envlp, &genkey(tpmencsk, pcr)));
+				let c_TPMParent = send(c_TPMParent, stadec(envlp, &genkey(tpmencsk, pcr)));
 				close(c_TPMParent);
 				close(c_TPMAlice);
 			}
