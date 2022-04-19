@@ -425,9 +425,8 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
        let ptypes = get_pattern_types (get_penv inner_env p) forms funs pattern in
        let ttype = get_term_type (get_penv inner_env p) forms funs term in
        let inner_env' = if List.length ptypes == 1 then
-         if (snd (List.nth ptypes 0)) <> DNone && (snd (List.nth ptypes 0)) <> ttype then begin
-           printf "%s" (show_dtype (ttype));
-           raise (TypeError(sprintf "Mismatching types in left and right hand parts of assignment")) end
+         if (snd (List.nth ptypes 0)) <> DNone && (snd (List.nth ptypes 0)) <> ttype then
+           raise (TypeError(sprintf "Mismatching types in left and right hand parts of assignment"))
          else 
            safe_update p (fst (List.nth ptypes 0)) ttype inner_env
        else
