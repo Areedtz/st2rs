@@ -46,12 +46,15 @@ Equations: dec(k, enc(pk(k), m, r)) = m,
            encunwrap(encwrap(id, r)) = <id, r>,
            signunwrap(signwrap(a, c, z)) = <a, c, z>;
 Formats: PKIBEFORM(mpkeyi), PKFORM(pkey);
-Events: SourceEnd(bytes), JudgeApprove(bytes), 
-        JudgeReject(bytes), CourtKill(bytes), 
-        DecryptorKill(bytes), AuditorKill(bytes), 
-        DecryptorZKPFail(bytes, bytes, bytes), CourtEnd(bytes, bytes);
+Events:  SourceEnd(bytes),
+         JudgeApprove(bytes),
+         JudgeReject(bytes),
+         CourtKill(bytes),
+         DecryptorKill(bytes),
+         AuditorKill(bytes),
+         DecryptorZKPFail(bytes, bytes, bytes),
+         CourtEnd(bytes, bytes);
 Queries: event(SourceEnd(ct)),
-
          event(JudgeApprove(status)),
          event(JudgeReject(status)),
          event(JudgeApprove(status)) & event(JudgeReject(status)),
@@ -62,7 +65,7 @@ Queries: event(SourceEnd(ct)),
 
          # If Court ended, it was with the same ciphertext as the one supplied by Source, and Judge approved the warrant
          event(CourtEnd(status, ct)),
-         event(CourtEnd(status, ct)) => event(JudgeApprove(status)) & event(SourceEnd(ct));
+         event(CourtEnd(status, ct)) & event(JudgeApprove(status)) => event(SourceEnd(ct));
 Protocol:
 Source -> Public: mpkform = PKIBEFORM<mpk>
 Court -> Public: pkaform = PKFORM<pka>
