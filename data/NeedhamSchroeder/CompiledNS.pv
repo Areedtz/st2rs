@@ -1,0 +1,88 @@
+(* Protocol: NeedhamSchroeder *)
+
+free c: channel.
+
+type bytes.
+type skey.
+type pkey.
+
+fun pk(skey): pkey.
+fun aenc(pkey, bytes): bytes.
+fun adec(skey, bytes): bytes.
+fun nawrap(pkey, bytes): bytes.
+fun naunwrap(bytes): bitstring.
+fun nanbwrap(bytes, bytes): bytes.
+fun nanbunwrap(bytes): bitstring.
+
+equation forall k: skey, m: bytes;
+	adec(k, aenc(pk(k), m)) = m.
+equation forall nonce: bytes, pk: pkey;
+	naunwrap(nawrap(pk, nonce)) = (pk, nonce).
+equation forall nonce1: bytes, nonce2: bytes;
+	nanbunwrap(nanbwrap(nonce1, nonce2)) = (nonce1, nonce2).
+
+event start_a(pkey, pkey, bytes).
+event end_a(pkey, pkey, bytes, bytes).
+event start_b(pkey, pkey, bytes, bytes).
+event end_b(pkey, pkey, bytes).
+
+query na: bytes, pka: pkey, pkb: pkey;
+	event(start_a(pka, pkb, na)).
+query na: bytes, nb: bytes, pka: pkey, pkb: pkey;
+	event(end_a(pka, pkb, na, nb)).
+query na: bytes, nb: bytes, pka: pkey, pkb: pkey;
+	event(start_b(pka, pkb, na, nb)).
+query na: bytes, pka: pkey, pkb: pkey;
+	event(end_b(pka, pkb, na)).
+query na: bytes, nb: bytes, pka: pkey, pkb: pkey;
+	event(end_a(pka, pkb, na, nb)) ==> event(start_b(pka, pkb, na, nb)).
+query na: bytes, pka: pkey, pkb: pkey;
+	event(end_b(pka, pkb, na)) ==> event(start_a(pka, pkb, na)).
+
+(* Secrecy queries *)
+query attacker(new na);
+      attacker(new nb).
+
+let A(pkb: pkey, ska: skey) = 
+	out(c, pk(ska));
+	in(c, pkx: pkey);
+	new na: bytes;
+	event start_a(pk(ska), pkx, na);
+	let ct = aenc(pkx, nawrap(pk(ska), na)) in
+	out(c, ct);
+	in(c, ctb: bytes);
+	let (=na, nx: bytes) = nanbunwrap(adec(ska, ctb)) in
+	let enc_nb = aenc(pkx, nx) in
+	out(c, enc_nb);
+	if pkx = pkb then
+		event end_a(pk(ska), pkb, na, nx);
+		0.
+
+let B(pka: pkey, skb: skey) = 
+	in(c, cta: bytes);
+	let (=pka, ny: bytes) = naunwrap(adec(skb, cta)) in
+	new nb: bytes;
+	event start_b(pka, pk(skb), ny, nb);
+	let ct = aenc(pka, nanbwrap(ny, nb)) in
+	out(c, ct);
+	in(c, z: bytes);
+	let z_nb = adec(skb, z) in
+	if z_nb = nb then
+		event end_b(pka, pk(skb), ny);
+		0.
+
+let Public(pkb: pkey) = 
+	in(c, pka: pkey);
+	out(c, pkb);
+	0.
+
+process (
+	new ska: skey;
+	new skb: skey;
+	let pkb = pk(skb) in
+	let pka = pk(ska) in
+
+	A(pkb, ska) |
+	B(pka, skb) |
+	Public(pkb)
+)

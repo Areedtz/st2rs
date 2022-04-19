@@ -1,0 +1,67 @@
+Problem: NeedhamSchroeder;
+Principals: A, B, Public;
+Knowledge: ska:skey@A,
+           skb:skey@B,
+           ida:id@B = sk2id(ska),
+           pkb:pkey@A = pk(skb),
+           pkb:pkey@Public = pk(skb);
+Types: id, bytes, skey, pkey;
+Functions: pk(skey) -> pkey,
+           sk2id(skey) -> id,
+           id2pk(id) -> pkey,
+           aenc(pkey, bytes) -> bytes,
+           adec(skey, bytes) -> bytes,
+           nawrap(id, bytes) -> bytes,
+           naunwrap(bytes) -> <id, bytes>,
+           nanbwrap(bytes, bytes) -> bytes,
+           nanbunwrap(bytes) -> <bytes, bytes>; 
+Equations: id2pk(sk2id(k)) = pk(k),
+           adec(k, aenc(pk(k), m)) = m,
+           naunwrap(nawrap(idp, nonce)) = <idp, nonce>,
+           nanbunwrap(nanbwrap(nonce1, nonce2)) = <nonce1, nonce2>;
+Events:  start_a(id, pkey, bytes),
+         end_a(id, pkey, bytes, bytes),
+         start_b(id, pkey, bytes, bytes),
+         end_b(id, pkey, bytes);
+Queries: event(start_a(ida, pkb, na)),
+         event(end_a(ida, pkb, na, nb)),
+         event(start_b(ida, pkb, na, nb)),
+         event(end_b(ida, pkb, na)),
+         event(end_a(ida, pkb, na, nb)) => event(start_b(ida, pkb, na, nb)),
+         event(end_b(ida, pkb, na)) => event(start_a(ida, pkb, na));         
+Protocol:
+A -> Public: pka = pk(ska) # ask if this is okay - sharing the key on the public channel
+A -> Public: ida = sk2id(ska) # ask if this is okay - sharing the id on the public channel
+Public -> A: pkx = pkb
+A {
+    new na: bytes;
+    let ida = sk2id(ska);
+    event start_a(ida, pkx, na);
+    let ct = aenc(pkx, nawrap(ida, na));
+}
+A -> B: cta = ct
+B {
+    let <%ida, ny: bytes> = naunwrap(adec(skb, cta));
+    new nb: bytes;
+    event start_b(ida, pk(skb), ny, nb);
+    let pka = id2pk(ida);
+    let ct = aenc(pka, nanbwrap(ny, nb));
+}
+B -> A: ctb = ct
+A {
+    let <%na, nx: bytes> = nanbunwrap(adec(ska, ctb));
+    let enc_nb = aenc(pkx, nx);
+}
+A -> B: z = enc_nb
+A {
+    if (pkx = pkb) {
+        event end_a(ida, pkb, na, nx);
+    }
+}
+B {
+    let z_nb = adec(skb, z);
+    if (z_nb = nb) {
+        event end_b(ida, pk(skb), ny);
+    }
+}
+end
