@@ -7,6 +7,8 @@ use serde::{Serialize, Deserialize};
 use std::thread;
 use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
+use uid::IdU8;
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize)]
 pub struct Repr<T>(Vec<u8>, PhantomData<T>);
@@ -34,49 +36,61 @@ type BPublic = Send<Repr<pkey>, Eps>;
 type PublicB = Recv<Repr<pkey>, Eps>;
 type PublicA = Recv<Repr<pkey>, Recv<Repr<id>, Send<Repr<id>, Eps>>>;
 
-type id = /* unimplemented */;
-type bytes = /* unimplemented */;
-type skey = /* unimplemented */;
-type pkey = /* unimplemented */;
+type id = u8;
+type bytes = Vec<u8>;
+type skey = RsaPrivateKey;
+type pkey = RsaPublicKey;
 
-fn pk(a1: skey) -> pkey {
-	unimplemented!();
+let mut id_pkey_storage = HashMap::new();
+let mut skey_id_storage = HashMap::new();
+
+fn pk(a1: &skey) -> pkey {
+	return RsaPublicKey::from(a1)
 }
 fn sk2id(a1: skey) -> id {
-	unimplemented!();
+	return skey_id_storage.get(a1).expect("skey does not exists in storage")
 }
 fn id2pk(a1: id) -> pkey {
-	unimplemented!();
+	return id_pkey_storage.get(a1).expect("id does not exists in storage")
 }
-fn aenc(a1: pkey, a2: bytes) -> bytes {
-	unimplemented!();
+fn aenc(a1: &pkey, a2: bytes) -> bytes {
+	let mut rng = OsRng;
+	let padding = PaddingScheme::new_pkcs1v15_encrypt();
+	return a1.encrypt(&mut rng, padding, &a2[..]).expect("failed to encrypt")
 }
-fn adec(a1: skey, a2: bytes) -> bytes {
-	unimplemented!();
+fn adec(a1: &skey, a2: bytes) -> bytes {
+	let padding = PaddingScheme::new_pkcs1v15_encrypt();
+	return a1.decrypt(padding, &a2).expect("failed to decrypt")
 }
-fn nawrap(a1: id, a2: bytes) -> bytes {
-	unimplemented!();
+fn nawrap(a1: id, a2: &bytes) -> bytes {
+	return bincode::serialize(&(a1, a2)).unwrap()
 }
 fn naunwrap(a1: bytes) -> (id, bytes) {
-	unimplemented!();
+	return bincode::deserialize(&a1).unwrap()
 }
-fn nanbwrap(a1: id, a2: bytes, a3: bytes) -> bytes {
-	unimplemented!();
+fn nanbwrap(a1: id, a2: &bytes, a3: &bytes) -> bytes {
+	return bincode::serialize(&(a1, a2, a3)).unwrap()
 }
 fn nanbunwrap(a1: bytes) -> (id, bytes, bytes) {
-	unimplemented!();
+	return bincode::deserialize(&a1).unwrap()
 }
 fn fresh_id() -> id {
-	unimplemented!();
+	return IdU8::<u8>::new().get()
 }
 fn fresh_bytes() -> bytes {
-	unimplemented!();
+	let mut buf: [u8; 32] = [0; 32];
+	let mut rng = OsRng;
+	rng.fill_bytes(&mut buf);
+	return buf.to_vec()
 }
 fn fresh_skey() -> skey {
-	unimplemented!();
+	println!("Generating skey");
+	let mut rng = OsRng;
+	return RsaPrivateKey::new(&mut rng, 2048).expect("failed to generate a private key");
 }
 fn fresh_pkey() -> pkey {
-	unimplemented!();
+	let sk = fresh_skey();
+	return pk(&sk)
 }
 
 #[cfg(test)]
@@ -173,8 +187,15 @@ fn public(c_PublicA: Chan<(), PublicA>, c_PublicB: Chan<(), PublicB>, idb: id) {
 fn main() {
 	let ska = fresh_skey();
 	let skb = fresh_skey();
+
+	skey_id_storage.insert(ska, fresh_id());
+	skey_id_storage.insert(skb, fresh_id());
+
 	let idb = sk2id(skb);
 	let ida = sk2id(ska);
+
+	id_pkey_storage.insert(idb, pk(skb));
+	id_pkey_storage.insert(ida, pk(ska));
 
 	let (c_AB, c_BA) = session_channel();
 	let (c_BPublic, c_PublicB) = session_channel();
