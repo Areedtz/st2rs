@@ -8,6 +8,11 @@ use std::thread;
 use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
 use uid::IdU8;
+use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme, BigUint};
+use rand::rngs::OsRng;
+use rand::RngCore;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize)]
@@ -41,17 +46,27 @@ type bytes = Vec<u8>;
 type skey = RsaPrivateKey;
 type pkey = RsaPublicKey;
 
-let mut id_pkey_storage = HashMap::new();
-let mut skey_id_storage = HashMap::new();
+static mut id_pkey_storage: Option<HashMap<id, pkey>> = None;
+static mut skey_id_storage: Option<HashMap<BigUint, id>> = None;
 
 fn pk(a1: &skey) -> pkey {
 	return RsaPublicKey::from(a1)
 }
-fn sk2id(a1: skey) -> id {
-	return skey_id_storage.get(a1).expect("skey does not exists in storage")
+fn sk2id(a1: &skey) -> id {
+	//let mut gen_id: [u8; 1] = [0; 1];
+	//let seed: [u8; 32] = (&a1.d().to_bytes_le())[..].try_into().unwrap();
+	//let mut rng = StdRng::from_seed(seed);
+	//rng.fill_bytes(&mut gen_id);
+	unsafe {
+		let cp = skey_id_storage.clone();
+		return (cp.unwrap().get(a1.d()).expect("skey does not exists in storage")).clone()
+	}
 }
 fn id2pk(a1: id) -> pkey {
-	return id_pkey_storage.get(a1).expect("id does not exists in storage")
+	unsafe {
+		let cp = id_pkey_storage.clone();
+		return (cp.unwrap().get(&a1).expect("id does not exists in storage")).clone()
+	}
 }
 fn aenc(a1: &pkey, a2: bytes) -> bytes {
 	let mut rng = OsRng;
@@ -98,44 +113,60 @@ mod tests {
 	use super::*;
 	#[test]
 	fn test_equation_0() {
+		unsafe {
+			id_pkey_storage = Some(HashMap::new());
+			skey_id_storage = Some(HashMap::new());
+		}
+			
 		let k = fresh_skey();
-		assert_eq!(id2pk(sk2id(k)), pk(k));
+
+		unsafe {
+			skey_id_storage.as_mut().unwrap().insert(k.d().clone(), fresh_id());
+		}
+
+		let idk = sk2id(&k);
+
+		unsafe {
+			id_pkey_storage.as_mut().unwrap().insert(idk, pk(&k));
+		}
+
+		assert_eq!(id2pk(sk2id(&k)), pk(&k));
 	}
 	#[test]
 	fn test_equation_1() {
 		let k = fresh_skey();
 		let m = fresh_bytes();
-		assert_eq!(adec(k, aenc(pk(k), m)), m);
+		assert_eq!(adec(&k, aenc(&pk(&k), m.clone())), m);
 	}
 	#[test]
 	fn test_equation_2() {
 		let idp = fresh_id();
 		let nonce = fresh_bytes();
-		assert_eq!(naunwrap(nawrap(idp, nonce)), (idp, nonce));
+		assert_eq!(naunwrap(nawrap(idp, &nonce)), (idp, nonce));
 	}
 	#[test]
 	fn test_equation_3() {
 		let idp = fresh_id();
 		let nonce1 = fresh_bytes();
 		let nonce2 = fresh_bytes();
-		assert_eq!(nanbunwrap(nanbwrap(idp, nonce1, nonce2)), (idp, nonce1, nonce2));
+		assert_eq!(nanbunwrap(nanbwrap(idp, &nonce1, &nonce2)), (idp, nonce1, nonce2));
 	}
 }
 
 fn a(c_APublic: Chan<(), APublic>, c_AB: Chan<(), AB>, idb: id, ska: skey) {
-	let c_APublic = send(c_APublic, pk(ska));
-	let c_APublic = send(c_APublic, sk2id(ska));
+	let c_APublic = send(c_APublic, pk(&ska));
+	let c_APublic = send(c_APublic, sk2id(&ska));
 	let (c_APublic, idx) = recv(c_APublic);
 	let pkx = id2pk(idx);
 	let na = fresh_bytes();
-	let ida = sk2id(ska);
+	let ida = sk2id(&ska);
 	println!("A started");
-	let ct = aenc(pkx, nawrap(ida, na));
+	let ct = aenc(&pkx, nawrap(ida, &na));
 	let c_AB = send(c_AB, ct);
 	let (c_AB, ctb) = recv(c_AB);
-	let (v0, v1, nx) = nanbunwrap(adec(ska, ctb));
+	let (v0, v1, nx) = nanbunwrap(adec(&ska, ctb));
 	if idx == v0 && na == v1 {
-		let enc_nb = aenc(pkx, nx);
+		let enc_nb = aenc(&pkx, nx);
 		let c_AB = send(c_AB, enc_nb);
 		let pkb = id2pk(idb);
 		if pkx == pkb {
@@ -151,18 +182,18 @@ fn a(c_APublic: Chan<(), APublic>, c_AB: Chan<(), AB>, idb: id, ska: skey) {
 }
 
 fn b(c_BPublic: Chan<(), BPublic>, c_BA: Chan<(), BA>, ida: id, skb: skey) {
-	let c_BPublic = send(c_BPublic, pk(skb));
+	let c_BPublic = send(c_BPublic, pk(&skb));
 	let (c_BA, cta) = recv(c_BA);
-	let (v2, ny) = naunwrap(adec(skb, cta));
+	let (v2, ny) = naunwrap(adec(&skb, cta));
 	if ida == v2 {
 		let nb = fresh_bytes();
-		let idb = sk2id(skb);
+		let idb = sk2id(&skb);
 		println!("B started");
 		let pka = id2pk(ida);
-		let ct = aenc(pka, nanbwrap(idb, ny, nb));
+		let ct = aenc(&pka, nanbwrap(idb, &ny, &nb));
 		let c_BA = send(c_BA, ct);
 		let (c_BA, z) = recv(c_BA);
-		let z_nb = adec(skb, z);
+		let z_nb = adec(&skb, z);
 		if z_nb == nb {
 			println!("B ended");
 			close(c_BA);
@@ -185,17 +216,26 @@ fn public(c_PublicA: Chan<(), PublicA>, c_PublicB: Chan<(), PublicB>, idb: id) {
 }
 
 fn main() {
+	unsafe {
+		id_pkey_storage = Some(HashMap::new());
+		skey_id_storage = Some(HashMap::new());
+	}
+	
 	let ska = fresh_skey();
 	let skb = fresh_skey();
 
-	skey_id_storage.insert(ska, fresh_id());
-	skey_id_storage.insert(skb, fresh_id());
+	unsafe {
+		skey_id_storage.as_mut().unwrap().insert(ska.d().clone(), fresh_id());
+		skey_id_storage.as_mut().unwrap().insert(skb.d().clone(), fresh_id());
+	}
 
-	let idb = sk2id(skb);
-	let ida = sk2id(ska);
+	let idb = sk2id(&skb);
+	let ida = sk2id(&ska);
 
-	id_pkey_storage.insert(idb, pk(skb));
-	id_pkey_storage.insert(ida, pk(ska));
+	unsafe {
+		id_pkey_storage.as_mut().unwrap().insert(idb, pk(&skb));
+		id_pkey_storage.as_mut().unwrap().insert(ida, pk(&ska));
+	}
 
 	let (c_AB, c_BA) = session_channel();
 	let (c_BPublic, c_PublicB) = session_channel();
