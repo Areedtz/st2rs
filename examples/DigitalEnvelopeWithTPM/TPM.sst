@@ -17,7 +17,7 @@ Functions: pk(skey) -> pkey,
            senc(bytes, symkey) -> bytes,
            sdec(bytes, symkey) -> bytes,
            hash(bytes, bytes) -> bytes,
-           genkey(skey, bytes) -> stskey, # Is the order here correct?
+           genkey(skey, bytes) -> stskey,
            symkeywrapper(symkey) -> bytes,
            symkeyunwrapper(bytes) -> symkey,
            bytesbyteswrapper(bytes, bytes) -> bytes,
