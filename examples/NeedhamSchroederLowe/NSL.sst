@@ -1,0 +1,61 @@
+Problem: NeedhamSchroederLowe;
+Principals: A, B, Public;
+Knowledge: ska:skey@A,
+           skb:skey@B,
+           pka:pkey@B = pk(ska),
+           pkb:pkey@A = pk(skb),
+           pkb:pkey@Public = pk(skb);
+Types: bytes, skey, pkey;
+Functions: pk(skey) -> pkey,
+           aenc(pkey, bytes) -> bytes,
+           adec(skey, bytes) -> bytes,
+           nawrap(pkey, bytes) -> bytes,
+           naunwrap(bytes) -> <pkey, bytes>,
+           nanbwrap(pkey, bytes, bytes) -> bytes,
+           nanbunwrap(bytes) -> <pkey, bytes, bytes>; 
+Equations: adec(k, aenc(pk(k), m)) = m,
+           naunwrap(nawrap(pk, nonce)) = <pk, nonce>,
+           nanbunwrap(nanbwrap(pk, nonce1, nonce2)) = <pk, nonce1, nonce2>;
+Events:  start_a(pkey, pkey, bytes),
+         end_a(pkey, pkey, bytes, bytes),
+         start_b(pkey, pkey, bytes, bytes),
+         end_b(pkey, pkey, bytes);
+Queries: event(start_a(pka, pkb, na)),
+         event(end_a(pka, pkb, na, nb)),
+         event(start_b(pka, pkb, na, nb)),
+         event(end_b(pka, pkb, na)),
+         event(end_a(pka, pkb, na, nb)) => event(start_b(pka, pkb, na, nb)),
+         event(end_b(pka, pkb, na)) => event(start_a(pka, pkb, na));
+Protocol:
+A -> Public: pka = pk(ska) # ask if this is okay - sharing the key on the public channel
+Public -> A: pkx = pkb
+A {
+    new na: bytes;
+    event start_a(pk(ska), pkx, na);
+    let ct = aenc(pkx, nawrap(pk(ska), na));
+}
+A -> B: cta = ct
+B {
+    let <%pka, ny: bytes> = naunwrap(adec(skb, cta));
+    new nb: bytes;
+    event start_b(pka, pk(skb), ny, nb);
+    let ct = aenc(pka, nanbwrap(pk(skb), ny, nb));
+}
+B -> A: ctb = ct
+A {
+    let <%pkx, %na, nx: bytes> = nanbunwrap(adec(ska, ctb));
+    let enc_nb = aenc(pkx, nx);
+}
+A -> B: z = enc_nb
+A {
+    if (pkx = pkb) {
+        event end_a(pk(ska), pkb, na, nx);
+    }
+}
+B {
+    let z_nb = adec(skb, z);
+    if (z_nb = nb) {
+        event end_b(pka, pk(skb), ny);
+    }
+}
+end

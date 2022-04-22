@@ -50,21 +50,24 @@ type let_bind =
   | Let of pattern * term * let_bind
   | Event of ident * term list * let_bind
   | IfBlock of term * let_bind * let_bind
+  | LetQuit
   | LetEnd
 
 (* Channel options / Bullet notation *)
 type channel_option =
   Public
-  | Auth
-  | Conf
   | AuthConf
+
+type event_list_type =
+  Conjunction
+  | Disjunction
 
 type event =
   NonInjEvent of ident * term list
   | InjEvent of ident * term list
-  
+
 type query =
-  ReachQuery of event
+  ReachQuery of event list * event_list_type
   | CorrQuery of event list * query
 
 (* Global types: p -> q *)
@@ -87,6 +90,7 @@ type local_type =
   | LEvent of ident * term list * local_type
   | LCall of ident * (ident * data_type) list * local_type
   | LIf of term * local_type * local_type
+  | LQuit
   | LLocalEnd
 
 type problem = { name: ident;
@@ -152,8 +156,6 @@ and show_dtype t =
 
 and show_channel_option = function
     Public   -> " -> "
-  | Auth     -> " *-> "
-  | Conf     -> " ->* "
   | AuthConf -> " *->* "
 
 and show_params = function
@@ -299,13 +301,25 @@ let rec get_pattern_types env forms funs = function
      | Some(dtypes) -> 
        let argtypes = List.flatten (List.map (fun arg -> get_pattern_types env forms funs arg) args) in
        let combinetypes = List.combine argtypes dtypes in
-       List.map (fun ((x, dt), fdt) ->
+       (f, DFType f)::List.map (fun ((x, dt), fdt) ->
          if dt <> DNone && dt <> fdt
            then raise (TypeError(sprintf "Variable %s is used as %s, but was previously assigned as %s" x (show_dtype fdt) (show_dtype dt)))
            else (x, fdt)
        ) combinetypes
    end
- | PTuple(args) -> List.flatten (List.map (fun arg -> get_pattern_types env forms funs arg) args)
+ | PTuple(args) -> List.flatten (List.map (fun arg ->
+      begin
+        match arg with
+        | PVar(x, DNone) -> 
+          begin
+            match List.assoc_opt x env with
+            | None -> raise (TypeError(sprintf "Variable %s is being defined as part of a tuple, but no type is given" x))
+            | _ -> ()
+          end
+        | _ -> ()
+      end;
+      get_pattern_types env forms funs arg) args
+   )
 
 let dt_unpack dt =
  match dt with
@@ -317,7 +331,7 @@ let check_event_types env evs forms funs name terms =
     match List.assoc_opt name evs with
     | Some(types) -> types
     | None -> raise (SyntaxError(sprintf "Event %s was not defined before being used" name)) in
-  if List.length event_types <> List.length terms then raise (SyntaxError(sprintf "Too many params passed to event %s" name));
+  if List.length event_types <> List.length terms then raise (SyntaxError(sprintf "Wrong number of params passed to event %s" name));
   List.iteri (fun i t -> if List.nth event_types i <> get_term_type env forms funs t then raise (TypeError(sprintf "Term %s doesn't match type %s" (show_term t) (show_dtype (List.nth event_types i))))) terms
 
 let check_principle_exists principals p =
@@ -372,6 +386,7 @@ let rec get_free_variables gfuns reserved princ gt acc =
       | IfBlock(cond, thenb, elseb) ->
         let newacc = get_term_variables cond@acc in
         inner reserved thenb (inner reserved elseb newacc)
+      | LetQuit -> List.filter (fun x -> not(List.exists (fun y -> x = y) reserved)) acc
       | LetEnd -> get_free_variables gfuns reserved princ g acc in
     inner reserved letb acc
  | Compute(_, _, g) -> get_free_variables gfuns reserved princ g acc
@@ -423,8 +438,10 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
              else 
                safe_update p (fst ptype) unpacktype acc
            ) inner_env ptypes unpacked
-         else
-           raise (SyntaxError(sprintf "Could not match left hand side of assignment to right hand side of assignment, mismatching number of variables")) in
+         else 
+          match ptypes with
+          | ((_, t))::xs when t = ttype -> List.fold_left (fun acc ptype -> safe_update p (fst ptype) (snd ptype) acc) inner_env ptypes
+          | _ -> raise (SyntaxError(sprintf "Could not match left hand side of assignment to right hand side of assignment, mismatching number of variables")) in
        if p = princ then 
          LLet(pattern, term, compile_letb inner_env' return_type next)
        else 
@@ -455,6 +472,10 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
             LIf(cond, compile_letb inner_env (Some(lcall)) thenb, compile_letb inner_env (Some(lcall)) elseb)
         end
        else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
+      | LetQuit ->
+          if p = princ then
+            LQuit
+          else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
       | LetEnd ->
           begin
             match return_type with
@@ -491,7 +512,7 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
     let passed_env = safe_join_envs orig_env env in (* If in branch, we combine the env that was present during the branching with the original env, so in case new variable were created, we get an updated env going forward *)
     LCall(name, free_vars_with_types, compile principals name [] passed_env forms funs evs gfuns princ (List.assoc name gfuns)) (* Have all the vars with their types that we pass to the principal's call for their part in the global func *)
  | CallGlobal(name) -> compile principals name [] env forms funs evs gfuns princ (List.assoc name gfuns)
- | _ -> LLocalEnd
+ | GlobalEnd -> LLocalEnd
 
  and build_global_funs_list = function
   DefGlobal(name, g, gt) -> (name, g)::(build_global_funs_list gt)

@@ -1,0 +1,140 @@
+(* Protocol: DigitalEnvelopeWithTPM *)
+
+free c: channel.
+
+fun Left(bitstring): bitstring [data].
+fun Right(bitstring): bitstring [data].
+
+type pkey.
+type skey.
+type symkey.
+type bytes.
+type stpkey.
+type stskey.
+
+fun pk(skey): pkey.
+fun stpk(stskey): stpkey.
+fun sign(bytes, skey): bytes.
+fun checksign(bytes, pkey): bytes.
+fun aenc(bytes, pkey): bytes.
+fun adec(bytes, skey): bytes.
+fun staenc(bytes, stpkey): bytes.
+fun stadec(bytes, stskey): bytes.
+fun senc(bytes, symkey): bytes.
+fun sdec(bytes, symkey): bytes.
+fun hash(bytes, bytes): bytes.
+fun genkey(skey, bytes): stskey.
+fun symkeywrapper(symkey): bytes.
+fun symkeyunwrapper(bytes): symkey.
+fun bytesbyteswrapper(bytes, bytes): bytes.
+fun bytesbytesunwrapper(bytes): bitstring.
+fun pkeybyteswrapper(stpkey, bytes): bytes.
+fun pkeybytesunwrapper(bytes): bitstring.
+fun OBT(): bytes.
+fun REF(): bytes.
+
+equation forall k: skey, m: bytes;
+	checksign(sign(m, k), pk(k)) = m.
+equation forall k: skey, m: bytes;
+	adec(aenc(m, pk(k)), k) = m.
+equation forall k: stskey, m: bytes;
+	stadec(staenc(m, stpk(k)), k) = m.
+equation forall k: symkey, m: bytes;
+	sdec(senc(m, k), k) = m.
+equation forall k: symkey;
+	symkeyunwrapper(symkeywrapper(k)) = k.
+equation forall b1: bytes, b2: bytes;
+	bytesbytesunwrapper(bytesbyteswrapper(b1, b2)) = (b1, b2).
+equation forall b: bytes, k: stpkey;
+	pkeybytesunwrapper(pkeybyteswrapper(k, b)) = (k, b).
+
+free secr: bytes [private].
+
+event revealed(bytes).
+
+query dec_secr: bytes;
+	event(revealed(dec_secr)).
+
+query attacker(secr).
+query dec_secr: bytes; 
+	attacker(secr) ==> event(revealed(dec_secr)).
+
+let Alice(tpmencpk: pkey, tpmsignpk: pkey) = 
+	in(c, pcr: bytes);
+	new na: bytes;
+	new sesk_a: symkey;
+	out(c, aenc(symkeywrapper(sesk_a), tpmencpk));
+	in(c, sesid_a: bytes);
+	out(c, senc(bytesbyteswrapper(na, sesid_a), sesk_a));
+	let h_obt = hash(OBT(), hash(na, pcr)) in
+	out(c, h_obt);
+	in(c, sign_obtk: bytes);
+	let (obtk: stpkey, =h_obt) = pkeybytesunwrapper(checksign(sign_obtk, tpmsignpk)) in
+	out(c, staenc(secr, obtk));
+	0.
+
+let Parent(c_ParentTPM_priv: channel, tpmencpk: pkey) = 
+	in(c, envlp: bytes);
+	new sesk_p: symkey;
+	out(c, aenc(symkeywrapper(sesk_p), tpmencpk));
+	in(c, sesid_p: bytes);
+	out(c, envlp);
+	in(c, branchchoice: bitstring);
+	(
+		let Left(leftbr) = branchchoice in
+		in(c, quote: bytes);
+		0
+	)
+	|
+	(
+		let Right(rightbr) = branchchoice in
+		in(c_ParentTPM_priv, secr: bytes);
+		0
+	).
+
+let TPM(c_ParentTPM_priv: channel, tpmencsk: skey, tpmsignsk: skey) = 
+	new pcr: bytes;
+	out(c, pcr);
+	in(c, enc_sesk_a: bytes);
+	let sesk_a = symkeyunwrapper(adec(enc_sesk_a, tpmencsk)) in
+	new sesid_a: bytes;
+	out(c, sesid_a);
+	in(c, n_sesid_a: bytes);
+	let (na: bytes, =sesid_a) = bytesbytesunwrapper(sdec(n_sesid_a, sesk_a)) in
+	let pcr = hash(na, pcr) in
+	in(c, h_obt: bytes);
+	out(c, sign(pkeybyteswrapper(stpk(genkey(tpmencsk, h_obt)), h_obt), tpmsignsk));
+	in(c, enc_sesk_p: bytes);
+	new sesid_p: bytes;
+	out(c, sesid_p);
+	in(c, envlp: bytes);
+	in(c, branchchoice: bitstring);
+	(
+		let Left(leftbr) = branchchoice in
+		let pcr = hash(REF(), pcr) in
+		out(c, sign(bytesbyteswrapper(pcr, envlp), tpmsignsk));
+		0
+	)
+	|
+	(
+		let Right(rightbr) = branchchoice in
+		let pcr = hash(OBT(), pcr) in
+		event revealed(stadec(envlp, genkey(tpmencsk, pcr)));
+		out(c_ParentTPM_priv, stadec(envlp, genkey(tpmencsk, pcr)));
+		0
+	).
+
+process (
+	new c_ParentTPM_priv: channel;
+	new tpmencsk: skey;
+	new tpmsignsk: skey;
+	let tpmsignpk = pk(tpmsignsk) in
+	let tpmencpk = pk(tpmencsk) in
+	out(c, tpmsignpk);
+	out(c, tpmencpk);
+	out(c, c_ParentTPM_priv);
+
+	Alice(tpmencpk, tpmsignpk) |
+	Parent(c_ParentTPM_priv, tpmencpk) |
+	TPM(c_ParentTPM_priv, tpmencsk, tpmsignsk)
+)

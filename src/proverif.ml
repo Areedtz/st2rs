@@ -58,11 +58,12 @@ and show_event = function
   NonInjEvent(id, args) -> "event(" ^ id ^ "(" ^ show_term_list args ^ "))"
   | InjEvent(id, args) -> "inj-event(" ^ id ^ "(" ^ show_term_list args ^ "))"
 
-and show_events evs = String.concat " && " (List.map (fun e -> show_event e) evs)
+and show_events evs op = String.concat (sprintf " %s " op) (List.map (fun e -> show_event e) evs)
 
 let rec show_query = function
-  ReachQuery(event) -> show_event event
-  | CorrQuery(events, next) -> "(" ^ show_events events ^ " ==> " ^ show_query next ^ ")"
+  ReachQuery(events, Conjunction) -> show_events events "&&"
+  | ReachQuery(events, Disjunction) -> show_events events "||"
+  | CorrQuery(events, next) -> "(" ^ show_events events "&&" ^ " ==> " ^ show_query next ^ ")"
 
 let rec build_query_params query funcs event_names_and_types function_names_and_types = (* [(var name, type)...] *)
   let rec inner e t pos function_types =
@@ -91,14 +92,15 @@ let rec build_query_params query funcs event_names_and_types function_names_and_
     | _ -> [] in
   let params = 
     match query with
-    | ReachQuery(event) ->
+    | ReachQuery(events, _) ->
+      (List.flatten (List.map (fun event ->
       begin
         match event with
         | NonInjEvent(e, args) | InjEvent(e, args) -> 
           let event_types = List.assoc e event_names_and_types in
           if List.length args <> List.length event_types then raise (SyntaxError(sprintf "Wrong number of arguments passed to %s event" e));
           List.flatten (List.mapi (fun i arg -> inner e arg i []) args)
-      end
+      end) events))
     | CorrQuery(events, next) ->
       (List.flatten (List.map (fun event -> 
       begin
@@ -120,14 +122,12 @@ and show_query_params query funcs event_names_and_types function_names_and_types
 
 and show_query_with_params query funcs event_names_and_types function_names_and_types =
   match query with
-  | ReachQuery(event) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_event event
+  | ReachQuery(_, _) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_query query
   | CorrQuery(_, _) -> "query " ^ (show_query_params query funcs event_names_and_types function_names_and_types) ^ show_query query
 
 and show_channel parties = function
   Public -> "c"
-  | Auth -> "c_" ^ parties ^ "_auth"
-  | Conf -> "c_" ^ parties ^ "_conf"
-  | AuthConf -> "c_" ^ parties ^ "_authconf"
+  | AuthConf -> "c_" ^ parties ^ "_priv"
 
 let rec show_party_channels p acc suffix channels =
   match channels with
@@ -156,7 +156,7 @@ and show_local_type p channels prefix = function
       end
   | LCall(ident, params, _) ->
     sprintf "%s%s%s(%s)" prefix p ident (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) params)))
-  | LLocalEnd -> prefix ^ "0"
+  | LQuit | LLocalEnd -> prefix ^ "0"
 
 and show_format = function
   (name, types) -> "fun " ^ name ^ "(" ^ (String.concat ", " (List.map (fun t -> show_dtype t) types)) ^ "): bitstring [data]."
@@ -209,9 +209,18 @@ let rec find_branch_functions = function
   | LChoose(_, _, lb, rb) | LOffer(_, _, lb, rb) ->
     find_branch_functions lb @ find_branch_functions rb
   | LSend(_, _, _, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
-  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) | LIf(_, next, _) -> find_branch_functions next (* LIF - thenb and elseb will be the same => we can pick any *)
+  | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_branch_functions next
   | LCall(name, params, next) -> find_branch_functions next@[(name, (params, next))]
-  | LLocalEnd -> []
+  | LIf(_, nextthen, nextelse) ->
+    let branches_then = find_branch_functions nextthen in
+    let branches_else = find_branch_functions nextelse in
+    begin
+      match (branches_then, branches_else) with
+      | ([], []) -> []
+      | ([], _) -> branches_else
+      | (_, _) -> branches_then
+    end
+  | LQuit | LLocalEnd -> []
 
 let rec find_and_print_branch_functions channels l p =
   let branch_functions = find_branch_functions l in
@@ -243,10 +252,10 @@ let proverif (pr:problem): unit =
   if List.length pr.formats > 0 then printf "%s\n" "";
   List.iter (fun t -> 
     printf "%s.\n" (show_function t)) pr.functions;
-  printf "%s\n" "";
+  if List.length pr.functions > 0 then printf "%s\n" "";
   List.iter (fun e -> 
     printf "%s.\n" (show_equation e function_types)) pr.equations;
-  printf "%s\n" "";
+    if List.length pr.equations > 0 then printf "%s\n" "";
   List.iter (fun e -> 
     printf "%s.\n" (show_event_def e)) pr.events;
   if List.length pr.events > 0 then printf "%s\n" "";

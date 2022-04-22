@@ -8,8 +8,6 @@ use session_types::*;
 use std::{marker};
 use serde::{Serialize, Deserialize};
 use std::thread;
-use std::process;
-use std::borrow::Borrow;
 use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
 

@@ -3,7 +3,7 @@
 %}
 
 %token <string> ID
-%token COMMA COLON SEMI PCT ARROW BIGARROW AT AUTH CONF AUTHCONF
+%token COMMA COLON SEMI PCT ARROW BIGARROW AT AUTHCONF
 %token LEFT_PAR RIGHT_PAR LEFT_ANGLE RIGHT_ANGLE LEFT_BRACE RIGHT_BRACE LEFT_BRACK RIGHT_BRACK
 %token EQ AND OR NOT
 %token NEW LET EVENT INJ_EVENT IN END IF ELSE
@@ -14,33 +14,41 @@
 %%
 
 opt_knowledge:
-| KNOWLEDGE; COLON; k = separated_list(COMMA, indef); SEMI; { k }
+| KNOWLEDGE; COLON; k = separated_nonempty_list(COMMA, indef); SEMI; { k }
+| { [] }
+
+opt_functions:
+| FUNCTIONS; COLON; f = separated_nonempty_list(COMMA, fundef); SEMI; { f }
+| { [] }
+
+opt_equations:
+| EQUATIONS; COLON; e = separated_nonempty_list(COMMA, eqdef); SEMI; { e }
 | { [] }
 
 opt_formats:
-| FORMATS; COLON; formats = separated_list(COMMA, format_def); SEMI; { formats }
+| FORMATS; COLON; formats = separated_nonempty_list(COMMA, format_def); SEMI; { formats }
 | { [] }
 
 opt_events:
-| EVENTS; COLON; e = separated_list(COMMA, evdef); SEMI; { e }
+| EVENTS; COLON; e = separated_nonempty_list(COMMA, evdef); SEMI; { e }
 | { [] }
 
 opt_queries:
-| QUERIES; COLON; q = separated_list(COMMA, qdef); SEMI; { q }
+| QUERIES; COLON; q = separated_nonempty_list(COMMA, qdef); SEMI; { q }
 | { [] }
 
 program:
 | PROBLEM; COLON; n = ID; SEMI;
-  PRINCIPALS; COLON; p = separated_list(COMMA, prindef); SEMI;
+  PRINCIPALS; COLON; p = separated_nonempty_list(COMMA, prindef); SEMI;
   k = opt_knowledge;
-  TYPES; COLON; t = separated_list(COMMA, data_type); SEMI;
-  FUNCTIONS; COLON; f = separated_list(COMMA, fundef); SEMI;
-  EQUATIONS; COLON; e = separated_list(COMMA, eqdef); SEMI;
+  TYPES; COLON; t = separated_nonempty_list(COMMA, data_type); SEMI;
+  functions = opt_functions;
+  equations = opt_equations;
   formats = opt_formats;
   events = opt_events;
   queries = opt_queries;
   PROTOCOL; COLON; g = global_type; EOF
-{ Some { name = n; principals = p; knowledge = k; types = t; functions = f; equations = e; formats = formats; events = events; queries = queries; protocol = g } };
+{ Some { name = n; principals = p; knowledge = k; types = t; functions = functions; equations = equations; formats = formats; events = events; queries = queries; protocol = g } };
 
 fundef:
 | f = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR; ARROW; return_type = data_type { (f, (params, return_type, false, [])) }
@@ -56,18 +64,22 @@ indef:
 evdef:
 | e = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR { (e, params) }
 
+hdef:
+| LEFT_PAR; q = hdef; RIGHT_PAR { q }
+| event = event; BIGARROW; q = hdef; { CorrQuery([event], q) }
+| event = event { ReachQuery([event], Conjunction) }
+| event = event; AND; events = separated_nonempty_list(AND, event) { ReachQuery(event::events, Conjunction) }
+| event = event; OR; events = separated_nonempty_list(OR, event) { ReachQuery(event::events, Disjunction) }
+
 qdef:
-| events = event_list; BIGARROW; q = qdef { CorrQuery(events, q) }
-| event = event { ReachQuery(event) }
+| events = separated_nonempty_list(AND, event) { ReachQuery(events, Conjunction) }
+| events = separated_nonempty_list(AND, event); BIGARROW; q = hdef { CorrQuery(events, q) }
 
 event:
 | INJ_EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
   { InjEvent(e, args) }
 | EVENT; LEFT_PAR; e = ID; LEFT_PAR; args = term_list; RIGHT_PAR; RIGHT_PAR;
   { NonInjEvent(e, args) }
-
-event_list:
-| l = separated_list(AND, event) { l }
 
 prindef:
 | name = ID; LEFT_BRACK; DISHONEST; RIGHT_BRACK
@@ -77,7 +89,6 @@ prindef:
 
 format_def:
 | f = ID; LEFT_PAR; params = data_type_list; RIGHT_PAR { (f, params) }
-
 
 (* Choose? *)
 term:
@@ -144,12 +155,11 @@ let_bind:
   { IfBlock(cond, then_body, else_body) }
 | IF; LEFT_PAR; cond = term; RIGHT_PAR; LEFT_BRACE; then_body = let_bind; RIGHT_BRACE
   { IfBlock(cond, then_body, LetEnd) }
+| END { LetQuit }
 | { LetEnd };
 
 channel_option:
 | ARROW { Public }
-| AUTH { Auth  }
-| CONF { Conf }
 | AUTHCONF { AuthConf };
 
 global_type:

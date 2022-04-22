@@ -1,0 +1,97 @@
+(* Protocol: NeedhamSchroeder *)
+
+free c: channel.
+
+type id.
+type bytes.
+type skey.
+type pkey.
+
+fun pk(skey): pkey.
+fun sk2id(skey): id.
+fun id2pk(id): pkey.
+fun aenc(pkey, bytes): bytes.
+fun adec(skey, bytes): bytes.
+fun nawrap(id, bytes): bytes.
+fun naunwrap(bytes): bitstring.
+fun nanbwrap(bytes, bytes): bytes.
+fun nanbunwrap(bytes): bitstring.
+
+equation forall k: skey;
+	id2pk(sk2id(k)) = pk(k).
+equation forall k: skey, m: bytes;
+	adec(k, aenc(pk(k), m)) = m.
+equation forall idp: id, nonce: bytes;
+	naunwrap(nawrap(idp, nonce)) = (idp, nonce).
+equation forall nonce1: bytes, nonce2: bytes;
+	nanbunwrap(nanbwrap(nonce1, nonce2)) = (nonce1, nonce2).
+
+event start_a(id, pkey, bytes).
+event end_a(id, pkey, bytes, bytes).
+event start_b(id, pkey, bytes, bytes).
+event end_b(id, pkey, bytes).
+
+query ida: id, na: bytes, pkb: pkey;
+	event(start_a(ida, pkb, na)).
+query ida: id, na: bytes, nb: bytes, pkb: pkey;
+	event(end_a(ida, pkb, na, nb)).
+query ida: id, na: bytes, nb: bytes, pkb: pkey;
+	event(start_b(ida, pkb, na, nb)).
+query ida: id, na: bytes, pkb: pkey;
+	event(end_b(ida, pkb, na)).
+query ida: id, na: bytes, nb: bytes, pkb: pkey;
+	event(end_a(ida, pkb, na, nb)) ==> event(start_b(ida, pkb, na, nb)).
+query ida: id, na: bytes, pkb: pkey;
+	event(end_b(ida, pkb, na)) ==> event(start_a(ida, pkb, na)).
+
+(* Secrecy queries *)
+query attacker(new na);
+      attacker(new nb).
+
+let A(pkb: pkey, ska: skey) = 
+	out(c, pk(ska));
+	out(c, sk2id(ska));
+	in(c, pkx: pkey);
+	new na: bytes;
+	let ida = sk2id(ska) in
+	event start_a(ida, pkx, na);
+	let ct = aenc(pkx, nawrap(ida, na)) in
+	out(c, ct);
+	in(c, ctb: bytes);
+	let (=na, nx: bytes) = nanbunwrap(adec(ska, ctb)) in
+	let enc_nb = aenc(pkx, nx) in
+	out(c, enc_nb);
+	if pkx = pkb then
+		event end_a(ida, pkb, na, nx);
+		0.
+
+let B(ida: id, skb: skey) = 
+	in(c, cta: bytes);
+	let (=ida, ny: bytes) = naunwrap(adec(skb, cta)) in
+	new nb: bytes;
+	event start_b(ida, pk(skb), ny, nb);
+	let pka = id2pk(ida) in
+	let ct = aenc(pka, nanbwrap(ny, nb)) in
+	out(c, ct);
+	in(c, z: bytes);
+	let z_nb = adec(skb, z) in
+	if z_nb = nb then
+		event end_b(ida, pk(skb), ny);
+		0.
+
+let Public(pkb: pkey) = 
+	in(c, pka: pkey);
+	in(c, ida: id);
+	out(c, pkb);
+	0.
+
+process (
+	new ska: skey;
+	new skb: skey;
+	let pkb = pk(skb) in
+	let ida = sk2id(ska) in
+
+	A(pkb, ska) |
+	B(ida, skb) |
+	Public(pkb)
+)

@@ -1,0 +1,71 @@
+Problem: NeedhamSchroederLowe;
+Principals: A, B, Public;
+Knowledge: ska:skey@A,
+           skb:skey@B,
+           idb:id@A = sk2id(skb),
+           ida:id@B = sk2id(ska),
+           idb:id@Public = sk2id(skb);
+Types: id, bytes, skey, pkey;
+Functions: pk(skey) -> pkey,
+           sk2id(skey) -> id,
+           id2pk(id) -> pkey,
+           aenc(pkey, bytes) -> bytes,
+           adec(skey, bytes) -> bytes,
+           nawrap(id, bytes) -> bytes,
+           naunwrap(bytes) -> <id, bytes>,
+           nanbwrap(id, bytes, bytes) -> bytes,
+           nanbunwrap(bytes) -> <id, bytes, bytes>; 
+Equations: id2pk(sk2id(k)) = pk(k),
+           adec(k, aenc(pk(k), m)) = m,
+           naunwrap(nawrap(idp, nonce)) = <idp, nonce>,
+           nanbunwrap(nanbwrap(idp, nonce1, nonce2)) = <idp, nonce1, nonce2>;
+Events:  start_a(id, id, bytes),
+         end_a(id, id, bytes, bytes),
+         start_b(id, id, bytes, bytes),
+         end_b(id, id, bytes);
+Queries: event(start_a(ida, idb, na)),
+         event(end_a(ida, idb, na, nb)),
+         event(start_b(ida, idb, na, nb)),
+         event(end_b(ida, idb, na)),
+         event(end_a(ida, idb, na, nb)) => event(start_b(ida, idb, na, nb)),
+         event(end_b(ida, idb, na)) => event(start_a(ida, idb, na));
+Protocol:
+A -> Public: pka = pk(ska) # ask if this is okay - sharing the key on the public channel
+A -> Public: ida = sk2id(ska) # ask if this is okay - sharing the id on the public channel
+B -> Public: pkb = pk(skb) # ask if this is okay - sharing the key on the public channel
+Public -> A: idx = idb
+A {
+    let pkx = id2pk(idx);
+    new na: bytes;
+    let ida = sk2id(ska);
+    event start_a(ida, idx, na);
+    let ct = aenc(pkx, nawrap(ida, na));
+}
+A -> B: cta = ct
+B {
+    let <%ida, ny: bytes> = naunwrap(adec(skb, cta));
+    new nb: bytes;
+    let idb = sk2id(skb);
+    event start_b(ida, idb, ny, nb);
+    let pka = id2pk(ida);
+    let ct = aenc(pka, nanbwrap(idb, ny, nb));
+}
+B -> A: ctb = ct
+A {
+    let <%idx, %na, nx: bytes> = nanbunwrap(adec(ska, ctb));
+    let enc_nb = aenc(pkx, nx);
+}
+A -> B: z = enc_nb
+A {
+    let pkb = id2pk(idb);
+    if (pkx = pkb) {
+        event end_a(ida, idb, na, nx);
+    }
+}
+B {
+    let z_nb = adec(skb, z);
+    if (z_nb = nb) {
+        event end_b(ida, idb, ny);
+    }
+}
+end

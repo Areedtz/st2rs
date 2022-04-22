@@ -1,0 +1,93 @@
+Problem: DigitalEnvelopeWithTPM;
+Principals: Alice, Parent, TPM;
+Knowledge: tpmsignsk:skey@TPM,
+           tpmencsk:skey@TPM,
+           tpmsignpk:pkey@Alice = pk(tpmsignsk),
+           tpmencpk:pkey@Alice = pk(tpmencsk),
+           tpmencpk:pkey@Parent = pk(tpmencsk);
+Types: pkey, skey, symkey, bytes, stpkey, stskey;
+Functions: pk(skey) -> pkey,
+           stpk(stskey) -> stpkey,
+           sign(bytes, skey) -> bytes,
+           checksign(bytes, pkey) -> bytes,
+           aenc(bytes, pkey) -> bytes,
+           adec(bytes, skey) -> bytes,
+           staenc(bytes, stpkey) -> bytes,
+           stadec(bytes, stskey) -> bytes,
+           senc(bytes, symkey) -> bytes,
+           sdec(bytes, symkey) -> bytes,
+           hash(bytes, bytes) -> bytes,
+           genkey(skey, bytes) -> stskey,
+           symkeywrapper(symkey) -> bytes,
+           symkeyunwrapper(bytes) -> symkey,
+           bytesbyteswrapper(bytes, bytes) -> bytes,
+           bytesbytesunwrapper(bytes) -> <bytes, bytes>,
+           pkeybyteswrapper(stpkey, bytes) -> bytes,
+           pkeybytesunwrapper(bytes) -> <stpkey, bytes>,
+           OBT() -> bytes,
+           REF() -> bytes;
+Equations: checksign(sign(m, k), pk(k)) = m,
+           adec(aenc(m, pk(k)), k) = m,
+           stadec(staenc(m, stpk(k)), k) = m,
+           sdec(senc(m, k), k) = m,
+           symkeyunwrapper(symkeywrapper(k)) = k,
+           bytesbytesunwrapper(bytesbyteswrapper(b1, b2)) = <b1, b2>,
+           pkeybytesunwrapper(pkeybyteswrapper(k, b)) = <k, b>;
+Events:  revealed(bytes);
+Queries: event(revealed(dec_secr));
+Protocol:
+TPM {
+    new pcr: bytes;
+}
+TPM -> Alice: pcr = pcr # We assume anyone knows the initial pcr state
+Alice {
+    new na: bytes;
+    new sesk_a: symkey;
+}
+Alice -> TPM: enc_sesk_a = aenc(symkeywrapper(sesk_a), tpmencpk)
+TPM {
+    let sesk_a = symkeyunwrapper(adec(enc_sesk_a, tpmencsk));
+    new sesid_a: bytes;
+}
+TPM -> Alice: sesid_a = sesid_a
+Alice -> TPM: n_sesid_a = senc(bytesbyteswrapper(na, sesid_a), sesk_a)
+TPM {
+    let <na: bytes, %sesid_a> = bytesbytesunwrapper(sdec(n_sesid_a, sesk_a));
+    let pcr = hash(na, pcr);
+}
+Alice {
+    let h_obt = hash(OBT(), hash(na, pcr));
+}
+Alice -> TPM: h_obt = h_obt
+TPM -> Alice: sign_obtk = sign(pkeybyteswrapper(stpk(genkey(tpmencsk, h_obt)), h_obt), tpmsignsk)
+Alice {
+    let <obtk: stpkey, %h_obt> = pkeybytesunwrapper(checksign(sign_obtk, tpmsignpk));
+    new secr: bytes;
+}
+Alice -> Parent: envlp = staenc(secr, obtk)
+Parent {
+    new sesk_p: symkey;
+}
+Parent -> TPM: enc_sesk_p = aenc(symkeywrapper(sesk_p), tpmencpk)
+TPM {
+    new sesid_p: bytes;
+}
+TPM -> Parent: sesid_p = sesid_p
+Parent -> TPM: envlp = envlp
+TPM -> Parent {
+    Refuse:
+        TPM {
+            let pcr = hash(REF(), pcr);
+        }
+        TPM -> Parent: quote = sign(bytesbyteswrapper(pcr, envlp), tpmsignsk)
+        end
+    Obtain:
+        TPM {
+            let pcr = hash(OBT(), pcr);
+        }
+        TPM {
+            event revealed(stadec(envlp, genkey(tpmencsk, pcr)));
+        }
+        TPM *->* Parent: secr = stadec(envlp, genkey(tpmencsk, pcr))
+        end
+}

@@ -127,7 +127,7 @@ and process princ channels = function
     [SBranch(Offer(ID("c_" ^ ident), lb_bstmts, rb_bstmts))]
   | LIf(cond, thenb, elseb) ->
     [SIfStatement(If(translateTerm cond, BStmts(process princ channels thenb), BStmts(process princ channels elseb)))]
-  | LLocalEnd -> close_channels channels
+  | LLocalEnd | LQuit -> close_channels channels
   | LCall(_, _, local_type) -> process princ channels local_type (* Compiling from Local Types to Rust Types *)
   | _ -> [End]
 
