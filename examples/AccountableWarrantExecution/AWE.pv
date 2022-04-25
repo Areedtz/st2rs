@@ -58,17 +58,18 @@ equation forall id: bytes, r: rand;
 equation forall a: bytes, c: bytes, z: bytes;
 	signunwrap(signwrap(a, c, z)) = (a, c, z).
 
-event SourceEnd(bytes).
+event SourceEnd(bytes, bytes).
 event JudgeApprove(bytes).
 event JudgeReject(bytes).
 event CourtKill(bytes).
 event DecryptorKill(bytes).
 event AuditorKill(bytes).
 event DecryptorZKPFail(bytes, bytes, bytes).
-event CourtEnd(bytes, bytes).
+event CourtEnd(bytes, bytes, bytes).
+event AuditorOK(bytes).
 
-query ct: bytes;
-	event(SourceEnd(ct)).
+query ct: bytes, id: bytes;
+	event(SourceEnd(id, ct)).
 query status: bytes;
 	event(JudgeApprove(status)).
 query status: bytes;
@@ -79,16 +80,24 @@ query status: bytes;
 	event(CourtKill(status)) && event(DecryptorKill(status)) && event(AuditorKill(status)).
 query pkzenc: bytes, pzk: bytes, status: bytes;
 	(event(CourtKill(status)) && event(DecryptorKill(status)) && event(AuditorKill(status)) ==> event(JudgeReject(status)) || event(DecryptorZKPFail(status, pkzenc, pzk))).
-query ct: bytes, status: bytes;
-	event(CourtEnd(status, ct)).
-query ct: bytes, status: bytes;
-	(event(CourtEnd(status, ct)) && event(JudgeApprove(status)) ==> event(SourceEnd(ct))).
+query ct: bytes, id: bytes, status: bytes;
+	event(CourtEnd(id, ct, status)).
+query ct: bytes, id: bytes, status: bytes;
+	(event(CourtEnd(id, ct, status)) && event(JudgeApprove(status)) ==> event(SourceEnd(id, ct))).
+query id: bytes;
+	event(AuditorOK(id)).
+query ct: bytes, id: bytes, status: bytes;
+	(event(AuditorOK(id)) && event(CourtEnd(id, ct, status)) ==> event(SourceEnd(id, ct))).
 
-let CourtGII(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecryptor_priv: channel, c_AuditorCourt_priv: channel, ct: bytes, r: rand, status: bytes) =
+(* Attacker doesn't learn id or msg *)
+query attacker(new id).
+query attacker(new msg).
+
+let CourtGII(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecryptor_priv: channel, c_AuditorCourt_priv: channel, ct: bytes, id: bytes, r: rand, status: bytes) =
 	in(c_CourtDecryptor_priv, partial: bytes);
 	let sk = bextract(r, partial) in
 	let m = decibe(ct, sk) in
-	event CourtEnd(status, ct);
+	event CourtEnd(id, ct, status);
 	0.
 
 let CourtGI(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecryptor_priv: channel, c_AuditorCourt_priv: channel, ct: bytes, id: bytes, pka: pkey, skc: skey) =
@@ -106,7 +115,7 @@ let CourtGI(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecr
 		event CourtKill(status);
 		0
 	else
-		CourtGII(c_CourtSource_priv, c_CourtJudge_priv, c_CourtDecryptor_priv, c_AuditorCourt_priv, ct, r, status).
+		CourtGII(c_CourtSource_priv, c_CourtJudge_priv, c_CourtDecryptor_priv, c_AuditorCourt_priv, ct, id, r, status).
 
 let CourtG(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecryptor_priv: channel, c_AuditorCourt_priv: channel, ct: bytes, id: bytes, pka: pkey, skc: skey) =
 	in(c_CourtJudge_priv, status: bytes);
@@ -146,6 +155,10 @@ let DecryptorGI(c_CourtDecryptor_priv: channel, c_AuditorDecryptor_priv: channel
 		let status = ZKPFAIL() in
 		DecryptorGII(c_CourtDecryptor_priv, c_AuditorDecryptor_priv, audit, b, ctc, msk, pzkenc, skd, status).
 
+let AuditorGIII(c_AuditorDecryptor_priv: channel, c_AuditorCourt_priv: channel, audit: bytes, ctcd: bytes, zkenc: bytes) =
+	out(c, (audit, ctcd, zkenc));
+	0.
+
 let AuditorGII(c_AuditorDecryptor_priv: channel, c_AuditorCourt_priv: channel, ctcsign: bytes, pkc: pkey, pkd: pkey, ska: skey) =
 	in(c_AuditorDecryptor_priv, dsign: bytes);
 	out(c, (ctcsign, dsign));
@@ -153,8 +166,11 @@ let AuditorGII(c_AuditorDecryptor_priv: channel, c_AuditorCourt_priv: channel, c
 	let id_ctc = dec(ska, ctc) in
 	let (audit: bytes, ctcd: bytes, zkenc: bytes) = signunwrap(checksign(dsign, pkd)) in
 	let (id_audit: bytes, r: rand) = encunwrap(dec(ska, audit)) in
-	out(c, (audit, ctcd, zkenc));
-	0.
+	if ctc = ctcd then
+		event AuditorOK(id_audit);
+		AuditorGIII(c_AuditorDecryptor_priv, c_AuditorCourt_priv, audit, ctcd, zkenc)
+	else
+		AuditorGIII(c_AuditorDecryptor_priv, c_AuditorCourt_priv, audit, ctcd, zkenc).
 
 let AuditorGI(c_AuditorDecryptor_priv: channel, c_AuditorCourt_priv: channel, pkc: pkey, pkd: pkey, ska: skey) =
 	in(c_AuditorCourt_priv, ctcsign: bytes);
@@ -172,7 +188,7 @@ let JudgeG(c_CourtJudge_priv: channel, status: bytes) =
 let Source(c_CourtSource_priv: channel, mpk: mpkeyi, id: bytes, msg: bytes) = 
 	out(c, PKIBEFORM(mpk));
 	let ct = encibe(mpk, id, msg) in
-	event SourceEnd(ct);
+	event SourceEnd(id, ct);
 	out(c_CourtSource_priv, ct);
 	out(c, ct);
 	0.
@@ -251,6 +267,12 @@ process (
 	let pkc = pk(skc) in
 	let pka = pk(ska) in
 	let mpk = pkibe(msk) in
+	
+	(* Decryptor is dishonest *)
+	out(c, c_CourtDecryptor_priv);
+	out(c, c_AuditorDecryptor_priv);
+	out(c, skd);
+	out(c, msk);
 
 	Source(c_CourtSource_priv, mpk, id, msg) |
 	Court(c_CourtSource_priv, c_CourtJudge_priv, c_CourtDecryptor_priv, c_AuditorCourt_priv, pka, skc, id) |
