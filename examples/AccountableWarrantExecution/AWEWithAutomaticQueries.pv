@@ -17,6 +17,9 @@ fun PKIBEFORM(mpkeyi): bitstring [data].
 fun PKFORM(pkey): bitstring [data].
 
 fun OK(): bytes.
+fun APPROVE(): bytes.
+fun REJECT(): bytes.
+fun ZKPFAIL(): bytes.
 fun pk(skey): pkey.
 fun enc(pkey, bytes, rand): bytes.
 fun dec(skey, bytes): bytes.
@@ -55,76 +58,96 @@ equation forall id: bytes, r: rand;
 equation forall a: bytes, c: bytes, z: bytes;
 	signunwrap(signwrap(a, c, z)) = (a, c, z).
 
-event OkCourt().
-event OKaud(bytes).
-event KOaud(bytes).
-event OKdec(bytes).
+event SourceEnd(bytes).
+event JudgeApprove(bytes).
+event JudgeReject(bytes).
+event CourtKill(bytes).
+event DecryptorKill(bytes).
+event AuditorKill(bytes).
+event DecryptorZKPFail(bytes, bytes, bytes).
+event CourtEnd(bytes, bytes).
 
-query event(OkCourt()).
-query k: skey, r: rand;
-	event(OKaud(enc(pk(k), OK(), r))).
-query idi: bytes;
-	event(KOaud(idi)).
-query ctc: bytes;
-	event(OKdec(ctc)).
+query ct: bytes;
+	event(SourceEnd(ct)).
+query status: bytes;
+	event(JudgeApprove(status)).
+query status: bytes;
+	event(JudgeReject(status)).
+query status: bytes;
+	event(JudgeApprove(status)) && event(JudgeReject(status)).
+query status: bytes;
+	event(CourtKill(status)) && event(DecryptorKill(status)) && event(AuditorKill(status)).
+query pkzenc: bytes, pzk: bytes, status: bytes;
+	(event(CourtKill(status)) && event(DecryptorKill(status)) && event(AuditorKill(status)) ==> event(JudgeReject(status)) || event(DecryptorZKPFail(status, pkzenc, pzk))).
+query ct: bytes, status: bytes;
+	event(CourtEnd(status, ct)).
+query ct: bytes, status: bytes;
+	(event(CourtEnd(status, ct)) && event(JudgeApprove(status)) ==> event(SourceEnd(ct))).
 
-let CourtB1(c_CourtSource_authconf: channel, c_CourtDecryptor_authconf: channel, c_AuditorCourt_authconf: channel, ct: bytes, pka: pkey, skc: skey, id: bytes) =
+let CourtGII(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecryptor_priv: channel, c_AuditorCourt_priv: channel, ct: bytes, r: rand, status: bytes) =
+	in(c_CourtDecryptor_priv, partial: bytes);
+	let sk = bextract(r, partial) in
+	let m = decibe(ct, sk) in
+	event CourtEnd(status, ct);
+	0.
+
+let CourtGI(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecryptor_priv: channel, c_AuditorCourt_priv: channel, ct: bytes, id: bytes, pka: pkey, skc: skey) =
 	new r: rand;
 	let ctc = enc(pka, id, r) in
 	let signed_ctc = sign(skc, ctc) in
-	out(c_AuditorCourt_authconf, signed_ctc);
+	out(c_AuditorCourt_priv, signed_ctc);
 	new r2: rand;
 	let audit = enc(pka, encwrap(id, r), r2) in
 	let signed_audit = sign(skc, audit) in
 	let b = blind(id, r) in
-	out(c_CourtDecryptor_authconf, (b, pzk(id, r), signed_ctc, signed_audit, pzkenc(id, r)));
-	in(c_CourtDecryptor_authconf, partial: bytes);
-	let sk = bextract(r, partial) in
-	let m = decibe(ct, sk) in
-	event OkCourt();
-	0.
-
-let JudgeB1() =
-	0.
-
-let Source(c_CourtSource_authconf: channel, mpk: mpkeyi, id: bytes, msg: bytes) = 
-	out(c, PKIBEFORM(mpk));
-	let ct = encibe(mpk, id, msg) in
-	out(c_CourtSource_authconf, ct);
-	out(c, ct);
-	0.
-
-let Court(c_CourtSource_authconf: channel, c_CourtDecryptor_authconf: channel, c_AuditorCourt_authconf: channel, pka: pkey, skc: skey, id: bytes) = 
-	out(c, PKFORM(pka));
-	in(c_CourtSource_authconf, ct: bytes);
-	in(c, branchchoice: bitstring);
-	(
-		let Left(leftbr) = branchchoice in
-		CourtB1(c_CourtSource_authconf, c_CourtDecryptor_authconf, c_AuditorCourt_authconf, ct, pka, skc, id)
-	)
-	|
-	(
-		let Right(rightbr) = branchchoice in
+	out(c_CourtDecryptor_priv, (b, pzk(id, r), signed_ctc, signed_audit, pzkenc(id, r)));
+	in(c_CourtDecryptor_priv, status: bytes);
+	if status = ZKPFAIL() then
+		event CourtKill(status);
 		0
-	).
+	else
+		CourtGII(c_CourtSource_priv, c_CourtJudge_priv, c_CourtDecryptor_priv, c_AuditorCourt_priv, ct, r, status).
 
-let Decryptor(c_CourtDecryptor_authconf: channel, c_AuditorDecryptor_authconf: channel, pkc: pkey, skd: skey, msk: mskeyi) = 
-	out(c, PKFORM(pkc));
-	in(c_CourtDecryptor_authconf, drequest: bitstring);
+let CourtG(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecryptor_priv: channel, c_AuditorCourt_priv: channel, ct: bytes, id: bytes, pka: pkey, skc: skey) =
+	in(c_CourtJudge_priv, status: bytes);
+	out(c_CourtDecryptor_priv, status);
+	out(c_AuditorCourt_priv, status);
+	if status = REJECT() then
+		event CourtKill(status);
+		0
+	else
+		CourtGI(c_CourtSource_priv, c_CourtJudge_priv, c_CourtDecryptor_priv, c_AuditorCourt_priv, ct, id, pka, skc).
+
+let DecryptorGIII(c_CourtDecryptor_priv: channel, c_AuditorDecryptor_priv: channel, audit: bytes, b: bytes, ctc: bytes, msk: mskeyi, pzkenc: bytes, skd: skey) =
+	let partial = pextract(msk, b) in
+	let dsign = sign(skd, signwrap(audit, ctc, pzkenc)) in
+	out(c_CourtDecryptor_priv, partial);
+	out(c_AuditorDecryptor_priv, dsign);
+	0.
+
+let DecryptorGII(c_CourtDecryptor_priv: channel, c_AuditorDecryptor_priv: channel, audit: bytes, b: bytes, ctc: bytes, msk: mskeyi, pzkenc: bytes, skd: skey, status: bytes) =
+	out(c_CourtDecryptor_priv, status);
+	out(c_AuditorDecryptor_priv, status);
+	if status = ZKPFAIL() then
+		event DecryptorKill(status);
+		0
+	else
+		DecryptorGIII(c_CourtDecryptor_priv, c_AuditorDecryptor_priv, audit, b, ctc, msk, pzkenc, skd).
+
+let DecryptorGI(c_CourtDecryptor_priv: channel, c_AuditorDecryptor_priv: channel, msk: mskeyi, pkc: pkey, skd: skey) =
+	in(c_CourtDecryptor_priv, drequest: bitstring);
 	let (b: bytes, pzk: bytes, signed_ctc: bytes, signed_audit: bytes, pzkenc: bytes) = drequest in
 	let ctc = checksign(signed_ctc, pkc) in
 	let audit = checksign(signed_audit, pkc) in
-	new p: bytes;
-	let partial = ( if(checkzkpokenc(ctc, pzkenc) = OK() && checkzkpok(b, pzk) = OK()) then pextract(msk, b) else p ) in
-	let dsign = sign(skd, signwrap(audit, ctc, pzkenc)) in
-	out(c_CourtDecryptor_authconf, partial);
-	out(c_AuditorDecryptor_authconf, dsign);
-	0.
+	if checkzkpokenc(ctc, pzkenc) = OK() && checkzkpok(b, pzk) = OK() then
+		let status = APPROVE() in
+		DecryptorGII(c_CourtDecryptor_priv, c_AuditorDecryptor_priv, audit, b, ctc, msk, pzkenc, skd, status)
+	else
+		let status = ZKPFAIL() in
+		DecryptorGII(c_CourtDecryptor_priv, c_AuditorDecryptor_priv, audit, b, ctc, msk, pzkenc, skd, status).
 
-let Auditor(c_AuditorDecryptor_authconf: channel, c_AuditorCourt_authconf: channel, pkd: pkey, pkc: pkey, ska: skey) = 
-	out(c, PKFORM(pkd));
-	in(c_AuditorCourt_authconf, ctcsign: bytes);
-	in(c_AuditorDecryptor_authconf, dsign: bytes);
+let AuditorGII(c_AuditorDecryptor_priv: channel, c_AuditorCourt_priv: channel, ctcsign: bytes, pkc: pkey, pkd: pkey, ska: skey) =
+	in(c_AuditorDecryptor_priv, dsign: bytes);
 	out(c, (ctcsign, dsign));
 	let ctc = checksign(ctcsign, pkc) in
 	let id_ctc = dec(ska, ctc) in
@@ -133,16 +156,73 @@ let Auditor(c_AuditorDecryptor_authconf: channel, c_AuditorCourt_authconf: chann
 	out(c, (audit, ctcd, zkenc));
 	0.
 
-let Judge() = 
+let AuditorGI(c_AuditorDecryptor_priv: channel, c_AuditorCourt_priv: channel, pkc: pkey, pkd: pkey, ska: skey) =
+	in(c_AuditorCourt_priv, ctcsign: bytes);
+	in(c_AuditorDecryptor_priv, status: bytes);
+	if status = ZKPFAIL() then
+		event AuditorKill(status);
+		0
+	else
+		AuditorGII(c_AuditorDecryptor_priv, c_AuditorCourt_priv, ctcsign, pkc, pkd, ska).
+
+let JudgeG(c_CourtJudge_priv: channel, status: bytes) =
+	out(c_CourtJudge_priv, status);
+	0.
+
+let Source(c_CourtSource_priv: channel, mpk: mpkeyi, id: bytes, msg: bytes) = 
+	out(c, PKIBEFORM(mpk));
+	let ct = encibe(mpk, id, msg) in
+	event SourceEnd(ct);
+	out(c_CourtSource_priv, ct);
+	out(c, ct);
+	0.
+
+let Court(c_CourtSource_priv: channel, c_CourtJudge_priv: channel, c_CourtDecryptor_priv: channel, c_AuditorCourt_priv: channel, pka: pkey, skc: skey, id: bytes) = 
+	out(c, PKFORM(pka));
+	in(c_CourtSource_priv, ct: bytes);
 	in(c, branchchoice: bitstring);
 	(
 		let Left(leftbr) = branchchoice in
-		JudgeB1()
+		CourtG(c_CourtSource_priv, c_CourtJudge_priv, c_CourtDecryptor_priv, c_AuditorCourt_priv, ct, id, pka, skc)
 	)
 	|
 	(
 		let Right(rightbr) = branchchoice in
+		CourtG(c_CourtSource_priv, c_CourtJudge_priv, c_CourtDecryptor_priv, c_AuditorCourt_priv, ct, id, pka, skc)
+	).
+
+let Decryptor(c_CourtDecryptor_priv: channel, c_AuditorDecryptor_priv: channel, pkc: pkey, skd: skey, msk: mskeyi) = 
+	out(c, PKFORM(pkc));
+	in(c_CourtDecryptor_priv, status: bytes);
+	if status = REJECT() then
+		event DecryptorKill(status);
 		0
+	else
+		DecryptorGI(c_CourtDecryptor_priv, c_AuditorDecryptor_priv, msk, pkc, skd).
+
+let Auditor(c_AuditorDecryptor_priv: channel, c_AuditorCourt_priv: channel, pkd: pkey, pkc: pkey, ska: skey) = 
+	out(c, PKFORM(pkd));
+	in(c_AuditorCourt_priv, status: bytes);
+	if status = REJECT() then
+		event AuditorKill(status);
+		0
+	else
+		AuditorGI(c_AuditorDecryptor_priv, c_AuditorCourt_priv, pkc, pkd, ska).
+
+let Judge(c_CourtJudge_priv: channel) = 
+	let status = APPROVE() in
+	in(c, branchchoice: bitstring);
+	(
+		let Left(leftbr) = branchchoice in
+		event JudgeApprove(status);
+		JudgeG(c_CourtJudge_priv, status)
+	)
+	|
+	(
+		let Right(rightbr) = branchchoice in
+		let status = REJECT() in
+		event JudgeReject(status);
+		JudgeG(c_CourtJudge_priv, status)
 	).
 
 let Public() = 
@@ -156,10 +236,11 @@ let Public() =
 	0.
 
 process (
-	new c_AuditorCourt_authconf: channel;
-	new c_AuditorDecryptor_authconf: channel;
-	new c_CourtDecryptor_authconf: channel;
-	new c_CourtSource_authconf: channel;
+	new c_AuditorCourt_priv: channel;
+	new c_AuditorDecryptor_priv: channel;
+	new c_CourtDecryptor_priv: channel;
+	new c_CourtJudge_priv: channel;
+	new c_CourtSource_priv: channel;
 	new id: bytes;
 	new msg: bytes;
 	new msk: mskeyi;
@@ -171,10 +252,10 @@ process (
 	let pka = pk(ska) in
 	let mpk = pkibe(msk) in
 
-	Source(c_CourtSource_authconf, mpk, id, msg) |
-	Court(c_CourtSource_authconf, c_CourtDecryptor_authconf, c_AuditorCourt_authconf, pka, skc, id) |
-	Decryptor(c_CourtDecryptor_authconf, c_AuditorDecryptor_authconf, pkc, skd, msk) |
-	Auditor(c_AuditorDecryptor_authconf, c_AuditorCourt_authconf, pkd, pkc, ska) |
-	Judge() |
+	Source(c_CourtSource_priv, mpk, id, msg) |
+	Court(c_CourtSource_priv, c_CourtJudge_priv, c_CourtDecryptor_priv, c_AuditorCourt_priv, pka, skc, id) |
+	Decryptor(c_CourtDecryptor_priv, c_AuditorDecryptor_priv, pkc, skd, msk) |
+	Auditor(c_AuditorDecryptor_priv, c_AuditorCourt_priv, pkd, pkc, ska) |
+	Judge(c_CourtJudge_priv) |
 	Public()
 )
