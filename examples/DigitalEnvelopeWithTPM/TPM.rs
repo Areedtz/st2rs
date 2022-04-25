@@ -211,7 +211,7 @@ mod tests {
 	fn test_equation_2() {
 		let k = fresh_stskey();
 		let m = fresh_bytes();
-		assert_eq!(stadec(staenc(m, stpk(k)), k), m);
+		assert_eq!(stadec(staenc(m.clone(), &stpk(k.clone())), &k), m);
 	}
 	#[test]
 	fn test_equation_3() {
@@ -235,12 +235,8 @@ mod tests {
 	#[test]
 	fn test_equation_6() {
 		let b = fresh_bytes();
-		let k = fresh_pkey();
-
-		// Rsa<Public> doesn't have a compare function so instead
-		// we just compare the bytes for the key
-		let (resk, resb) = pkeybytesunwrapper(pkeybyteswrapper(k.clone(), b.clone()));
-		assert_eq!((resk.public_key_to_pem().unwrap(), resb), (k.public_key_to_pem().unwrap(), b));
+		let k = fresh_stpkey();
+		assert_eq!(pkeybytesunwrapper(pkeybyteswrapper(k.clone(), b.clone())), (k, b));
 	}
 }
 
