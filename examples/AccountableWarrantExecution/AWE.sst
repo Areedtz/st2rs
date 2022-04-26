@@ -46,15 +46,16 @@ Equations: dec(k, enc(pk(k), m, r)) = m,
            encunwrap(encwrap(id, r)) = <id, r>,
            signunwrap(signwrap(a, c, z)) = <a, c, z>;
 Formats: PKIBEFORM(mpkeyi), PKFORM(pkey);
-Events:  SourceEnd(bytes),
+Events:  SourceEnd(bytes, bytes),
          JudgeApprove(bytes),
          JudgeReject(bytes),
          CourtKill(bytes),
          DecryptorKill(bytes),
          AuditorKill(bytes),
          DecryptorZKPFail(bytes, bytes, bytes),
-         CourtEnd(bytes, bytes);
-Queries: event(SourceEnd(ct)),
+         CourtEnd(bytes, bytes, bytes),
+         AuditorOK(bytes);
+Queries: event(SourceEnd(id, ct)),
          event(JudgeApprove(status)),
          event(JudgeReject(status)),
          event(JudgeApprove(status)) & event(JudgeReject(status)),
@@ -63,9 +64,13 @@ Queries: event(SourceEnd(ct)),
          event(CourtKill(status)) & event(DecryptorKill(status)) & event (AuditorKill(status)),
          event(CourtKill(status)) & event(DecryptorKill(status)) & event (AuditorKill(status)) => event(JudgeReject(status)) | event(DecryptorZKPFail(status, pkzenc, pzk)), 
 
-         # If Court ended, it was with the same ciphertext as the one supplied by Source, and Judge approved the warrant
-         event(CourtEnd(status, ct)),
-         event(CourtEnd(status, ct)) & event(JudgeApprove(status)) => event(SourceEnd(ct));
+         # If Court ended, it was with the same id, ciphertext as the one supplied by Source, and Judge approved the warrant
+         event(CourtEnd(id, ct, status)),
+         event(CourtEnd(id, ct, status)) & event(JudgeApprove(status)) => event(SourceEnd(id, ct)),
+
+         # If Auditor logged an id, then it was the one the Source initially got the warrant for
+         event(AuditorOK(id)),
+         event(AuditorOK(id)) & event(CourtEnd(id, ct, status)) => event(SourceEnd(id, ct));
 Protocol:
 Source -> Public: mpkform = PKIBEFORM<mpk>
 Court -> Public: pkaform = PKFORM<pka>
@@ -145,7 +150,7 @@ let G = {
     Court {
         let sk = bextract(r, partial);
         let m = decibe(ct, sk);
-        event CourtEnd(status, ct);
+        event CourtEnd(id, ct, status);
     }
     Auditor -> Public: auditableproof1 = <ctcsign, dsign>
     Auditor {
@@ -153,13 +158,16 @@ let G = {
         let id_ctc = dec(ska, ctc);
         let <audit: bytes, ctcd: bytes, zkenc: bytes> = signunwrap(checksign(dsign, pkd));
         let <id_audit: bytes, r: rand> = encunwrap(dec(ska, audit));
+        if (ctc = ctcd) {
+            event AuditorOK(id_audit);
+        }
     }
     Auditor -> Public: auditableproof2 = <audit, ctcd, zkenc>
     end
 } in
 Source {
     let ct = encibe(mpk, id, msg);
-    event SourceEnd(ct);
+    event SourceEnd(id, ct);
 }
 Source *->* Court: ct = ct
 Source -> Public: ct = ct
