@@ -156,7 +156,7 @@ and show_local_type p channels prefix = function
       end
   | LCall(ident, params, _) ->
     sprintf "%s%s%s(%s)" prefix p ident (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) params)))
-  | LQuit | LLocalEnd -> prefix ^ "0"
+  | LLocalEnd -> prefix ^ "0"
 
 and show_format = function
   (name, types) -> "fun " ^ name ^ "(" ^ (String.concat ", " (List.map (fun t -> show_dtype t) types)) ^ "): bitstring [data]."
@@ -211,16 +211,8 @@ let rec find_branch_functions = function
   | LSend(_, _, _, _, _, next) | LNew (_, _, next) | LLet (_, _, next)
   | LRecv (_, _, _, _, _, next) | LEvent (_, _, next) -> find_branch_functions next
   | LCall(name, params, next) -> find_branch_functions next@[(name, (params, next))]
-  | LIf(_, nextthen, nextelse) ->
-    let branches_then = find_branch_functions nextthen in
-    let branches_else = find_branch_functions nextelse in
-    begin
-      match (branches_then, branches_else) with
-      | ([], []) -> []
-      | ([], _) -> branches_else
-      | (_, _) -> branches_then
-    end
-  | LQuit | LLocalEnd -> []
+  | LIf(_, nextthen, nextelse) -> find_branch_functions nextthen @ find_branch_functions nextelse
+  | LLocalEnd -> []
 
 let rec find_and_print_branch_functions channels l p =
   let branch_functions = find_branch_functions l in

@@ -92,7 +92,7 @@ let output_principal_channels principal_locals =
       LLet(_, _, local_type) | LEvent(_, _, local_type) | LOffer(_, _, local_type, _) | 
       LChoose(_, _, local_type, _) | LCall(_, _, local_type) | LIf(_, local_type, _) -> (* For non-branching principles, so used to pick either local_type_lb or local_type_rb for LChoose and LOffer (they will be the same), now we are just passing next *)
       build_channel local_type s r continue
-    | LLocalEnd | LQuit -> "Eps" in
+    | LLocalEnd -> "Eps" in
   let rec inner local_types channels = 
     match local_types with
     | LSend(sender, receiver, _, _, _, local_type) | LRecv(receiver, sender, _, _, _, local_type)  -> (* s & r are flipped in LRecv *)
@@ -109,7 +109,7 @@ let output_principal_channels principal_locals =
       end
     | LNew(_, _, local_type) | LLet(_, _, local_type) | LEvent(_, _, local_type) | LCall(_, _, local_type) | LIf(_, local_type, _) ->
       inner local_type channels
-    | LLocalEnd | LQuit -> channels in
+    | LLocalEnd -> channels in
   List.fold_left (fun acc (channel_name, channel) -> acc ^ (sprintf "type %s = %s;\n" channel_name channel)) "" (inner principal_locals [])
 
 and show_knowledge = function
