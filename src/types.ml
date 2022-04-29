@@ -90,7 +90,6 @@ type local_type =
   | LEvent of ident * term list * local_type
   | LCall of ident * (ident * data_type) list * local_type
   | LIf of term * local_type * local_type
-  | LQuit
   | LLocalEnd
 
 type problem = { name: ident;
@@ -474,7 +473,7 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
        else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
       | LetQuit ->
           if p = princ then
-            LQuit
+            LLocalEnd
           else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
       | LetEnd ->
           begin

@@ -156,7 +156,7 @@ and show_local_type p channels prefix = function
       end
   | LCall(ident, params, _) ->
     sprintf "%s%s%s(%s)" prefix p ident (String.concat ", " ((show_party_channels p [] "" channels)@(List.map (fun (name, _) -> name) params)))
-  | LQuit | LLocalEnd -> prefix ^ "0"
+  | LLocalEnd -> prefix ^ "0"
 
 and show_format = function
   (name, types) -> "fun " ^ name ^ "(" ^ (String.concat ", " (List.map (fun t -> show_dtype t) types)) ^ "): bitstring [data]."
