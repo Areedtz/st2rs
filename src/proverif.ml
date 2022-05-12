@@ -233,7 +233,7 @@ let proverif (pr:problem): unit =
       String.concat "\n" (List.map (fun (_, a) -> "\tnew " ^ a ^ ": channel;") channels) ^ "\n" 
     else 
       "" in
-  let locals = List.map (fun (p, _) -> (p, (compile pr.principals "" [] env pr.formats pr.functions pr.events [] p pr.protocol))) pr.principals in
+  let locals = List.map (fun (p, _) -> (p, (compile pr.principals "" false env pr.formats pr.functions pr.events [] p pr.protocol))) pr.principals in
   printf  "(* Protocol: %s *)\n\n" pr.name;
   printf "free c: channel.\n\n%s\n\n" "fun Left(bitstring): bitstring [data].\nfun Right(bitstring): bitstring [data].";
   List.iter (fun t -> 
