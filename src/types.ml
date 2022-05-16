@@ -394,23 +394,23 @@ let rec get_free_variables gfuns reserved princ gt acc =
  | CallGlobal(name) -> get_free_variables gfuns reserved princ (List.assoc name gfuns) acc (* Get the free vars for a global func if we find a call to it *)
  | GlobalEnd -> List.filter (fun x -> not(List.exists (fun y -> x = y) reserved)) acc
 
-let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt =
+let rec compile principals if_prefix in_branch env forms funs evs gfuns princ gt =
  match gt with
  | Send(s, r, opt, x, t, g) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LSend(s, r, opt, t, ttype, compile principals if_prefix orig_env env' forms funs evs gfuns princ g)
+   LSend(s, r, opt, t, ttype, compile principals if_prefix in_branch env' forms funs evs gfuns princ g)
  | Send(s, r, opt, x, t, g) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   LRecv(s, r, opt, PVar(x, ttype), t, compile principals if_prefix orig_env env' forms funs evs gfuns princ g)
+   LRecv(s, r, opt, PVar(x, ttype), t, compile principals if_prefix in_branch env' forms funs evs gfuns princ g)
  | Send(s, r, _, x, t, g) ->
    check_principle_exists principals s; check_principle_exists principals r;
    let ttype = get_term_type (get_penv env s) forms funs t in (* also checks if s can send t *)
    let env' = safe_update r x ttype env in
-   compile principals if_prefix orig_env env' forms funs evs gfuns princ g
+   compile principals if_prefix in_branch env' forms funs evs gfuns princ g
  | Compute(p, letb, g) ->
    check_principle_exists principals p;
    let rec compile_letb inner_env return_type letb =
@@ -462,7 +462,7 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
           | None -> raise (SyntaxError(sprintf "Could not find variable %s used in function %s in env" x "_Condition"))
         ) free_vars_uniq in
         let name = if_prefix ^ "I" in
-        let next = compile principals name orig_env inner_env forms funs evs gfuns princ g in
+        let next = compile principals name in_branch inner_env forms funs evs gfuns princ g in
         begin
           match next with
           | LLocalEnd -> LIf(cond, compile_letb inner_env None thenb, compile_letb inner_env None elseb)
@@ -470,36 +470,32 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
             let lcall = LCall(name, free_vars_with_types, next) in
             LIf(cond, compile_letb inner_env (Some(lcall)) thenb, compile_letb inner_env (Some(lcall)) elseb)
         end
-       else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
+       else compile principals if_prefix in_branch inner_env forms funs evs gfuns princ g
       | LetQuit ->
           if p = princ then
             LLocalEnd
-          else compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
+          else compile principals if_prefix in_branch inner_env forms funs evs gfuns princ g
       | LetEnd ->
           begin
             match return_type with
             | Some(lcall) -> lcall
-            | None -> compile principals if_prefix orig_env inner_env forms funs evs gfuns princ g
+            | None -> compile principals if_prefix in_branch inner_env forms funs evs gfuns princ g
           end in
    compile_letb env None letb
  | Branch(s, r, _, lb, rb) when princ = s ->
    check_principle_exists principals s; check_principle_exists principals r;
-   let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   let passed_env = if List.length orig_env <> 0 then safe_join_envs orig_env env else env in
-   LOffer(s, r, compile principals (if_prefix ^ "BL") passed_env env' forms funs evs gfuns princ lb, compile principals (if_prefix ^ "BR") passed_env env' forms funs evs gfuns princ rb)
+   LOffer(s, r, compile principals (if_prefix ^ "BL") true env forms funs evs gfuns princ lb, compile principals (if_prefix ^ "BR") true env forms funs evs gfuns princ rb)
  | Branch(s, r, _, lb, rb) when princ = r ->
    check_principle_exists principals s; check_principle_exists principals r;
-   let env' = List.filter (fun (p, _) -> p = s || p = r) env in
-   let passed_env = if List.length orig_env <> 0 then safe_join_envs orig_env env else env in (* Updating the original env with the one from a branch and passing it on for the nested branching where it will get filtered again *)
-   LChoose(s, r, compile principals (if_prefix ^ "BL") passed_env env' forms funs evs gfuns princ lb, compile principals (if_prefix ^ "BR") passed_env env' forms funs evs gfuns princ rb)
+   LChoose(s, r, compile principals (if_prefix ^ "BL") true env forms funs evs gfuns princ lb, compile principals (if_prefix ^ "BR") true env forms funs evs gfuns princ rb)
  | Branch(s, r, _, lb, rb) ->
     check_principle_exists principals s; check_principle_exists principals r;
-    let left = compile principals if_prefix orig_env env forms funs evs gfuns princ lb in
-    let right = compile principals if_prefix orig_env env forms funs evs gfuns princ rb in
+    let left = compile principals if_prefix in_branch env forms funs evs gfuns princ lb in
+    let right = compile principals if_prefix in_branch env forms funs evs gfuns princ rb in
     if (compare left right) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way for %s" princ)); (* Compare branches for all non-branching parties *)
     left
- | DefGlobal(name, def, g) -> compile principals if_prefix orig_env env forms funs evs ((name, def)::gfuns) princ g (* Adding functions as we find them; Even if we have 2 global funcs defined with the same name, we would know which one we are referring to when we have the call *)
- | CallGlobal(name) when List.length orig_env <> 0 -> (* If in a branch - when calling LCall we will pass false if not in a branch *)
+ | DefGlobal(name, def, g) -> compile principals if_prefix in_branch env forms funs evs ((name, def)::gfuns) princ g (* Adding functions as we find them; Even if we have 2 global funcs defined with the same name, we would know which one we are referring to when we have the call *)
+ | CallGlobal(name) when in_branch -> (* If in a branch - output LCall, otherwise continue with the compilation *)
     let penv = get_penv env princ in
     let free_vars = get_free_variables gfuns [] princ (List.assoc name gfuns) [] in
     let free_vars_uniq = List.sort_uniq (fun x y -> compare x y) free_vars in
@@ -508,15 +504,9 @@ let rec compile principals if_prefix orig_env env forms funs evs gfuns princ gt 
       | Some(dt) -> (x, dt)
       | None -> raise (SyntaxError(sprintf "Could not find variable %s used in function %s in env" x name))
     ) free_vars_uniq in
-    let passed_env = safe_join_envs orig_env env in (* If in branch, we combine the env that was present during the branching with the original env, so in case new variable were created, we get an updated env going forward *)
-    LCall(name, free_vars_with_types, compile principals name [] passed_env forms funs evs gfuns princ (List.assoc name gfuns)) (* Have all the vars with their types that we pass to the principal's call for their part in the global func *)
- | CallGlobal(name) -> compile principals name [] env forms funs evs gfuns princ (List.assoc name gfuns)
+    LCall(name, free_vars_with_types, compile principals name false env forms funs evs gfuns princ (List.assoc name gfuns)) (* Have all the vars with their types that we pass to the principal's call for their part in the global func *)
+ | CallGlobal(name) -> compile principals name in_branch env forms funs evs gfuns princ (List.assoc name gfuns)
  | GlobalEnd -> LLocalEnd
-
- and build_global_funs_list = function
-  DefGlobal(name, g, gt) -> (name, g)::(build_global_funs_list gt)
-  | Send(_, _, _, _, _, gt) | Compute(_, _, gt) -> build_global_funs_list gt
-  | _ -> []
 
 and build_function_types = function
  (f, (args_t, _, _, _)) -> (f, List.map (fun t -> show_dtype t) args_t)
