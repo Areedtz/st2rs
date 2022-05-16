@@ -30,8 +30,8 @@ Queries: event(start_a(ida, pkb, na)),
          event(end_a(ida, pkb, na, nb)) => event(start_b(ida, pkb, na, nb)),
          event(end_b(ida, pkb, na)) => event(start_a(ida, pkb, na));         
 Protocol:
-A -> Public: pka = pk(ska) # ask if this is okay - sharing the key on the public channel
-A -> Public: ida = sk2id(ska) # ask if this is okay - sharing the id on the public channel
+A -> Public: pka = pk(ska)
+A -> Public: ida = sk2id(ska)
 Public -> A: pkx = pkb
 A {
     new na: bytes;

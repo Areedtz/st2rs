@@ -30,9 +30,9 @@ Queries: event(start_a(ida, idb, na)),
          event(end_a(ida, idb, na, nb)) => event(start_b(ida, idb, na, nb)),
          event(end_b(ida, idb, na)) => event(start_a(ida, idb, na));
 Protocol:
-A -> Public: pka = pk(ska) # ask if this is okay - sharing the key on the public channel
-A -> Public: ida = sk2id(ska) # ask if this is okay - sharing the id on the public channel
-B -> Public: pkb = pk(skb) # ask if this is okay - sharing the key on the public channel
+A -> Public: pka = pk(ska)
+A -> Public: ida = sk2id(ska)
+B -> Public: pkb = pk(skb)
 Public -> A: idx = idb
 A {
     let pkx = id2pk(idx);

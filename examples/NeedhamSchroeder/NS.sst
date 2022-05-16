@@ -27,7 +27,7 @@ Queries: event(start_a(pka, pkb, na)),
          event(end_a(pka, pkb, na, nb)) => event(start_b(pka, pkb, na, nb)),
          event(end_b(pka, pkb, na)) => event(start_a(pka, pkb, na));
 Protocol:
-A -> Public: pka = pk(ska) # ask if this is okay - sharing the key on the public channel
+A -> Public: pka = pk(ska)
 Public -> A: pkx = pkb
 A {
     new na: bytes;
