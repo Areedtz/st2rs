@@ -53,10 +53,6 @@ fn pk(a1: &skey) -> pkey {
 	return RsaPublicKey::from(a1)
 }
 fn sk2id(a1: &skey) -> id {
-	//let mut gen_id: [u8; 1] = [0; 1];
-	//let seed: [u8; 32] = (&a1.d().to_bytes_le())[..].try_into().unwrap();
-	//let mut rng = StdRng::from_seed(seed);
-	//rng.fill_bytes(&mut gen_id);
 	unsafe {
 		let cp = skey_id_storage.clone();
 		return (cp.unwrap().get(a1.d()).expect("skey does not exists in storage")).clone()
