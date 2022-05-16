@@ -495,7 +495,7 @@ let rec compile principals if_prefix in_branch env forms funs evs gfuns princ gt
     if (compare left right) <> 0 then raise (SyntaxError (sprintf "Left and right branch don't end the same way for %s" princ)); (* Compare branches for all non-branching parties *)
     left
  | DefGlobal(name, def, g) -> compile principals if_prefix in_branch env forms funs evs ((name, def)::gfuns) princ g (* Adding functions as we find them; Even if we have 2 global funcs defined with the same name, we would know which one we are referring to when we have the call *)
- | CallGlobal(name) when in_branch -> (* If in a branch - when calling LCall we will pass false if not in a branch *)
+ | CallGlobal(name) when in_branch -> (* If in a branch - output LCall, otherwise continue with the compilation *)
     let penv = get_penv env princ in
     let free_vars = get_free_variables gfuns [] princ (List.assoc name gfuns) [] in
     let free_vars_uniq = List.sort_uniq (fun x y -> compare x y) free_vars in
