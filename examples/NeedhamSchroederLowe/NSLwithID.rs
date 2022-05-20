@@ -165,8 +165,8 @@ fn a(c_APublic: Chan<(), APublic>, c_AB: Chan<(), AB>, idb: id, ska: skey) {
 		let enc_nb = aenc(&pkx, nx.clone());
 		let c_AB = send(c_AB, enc_nb);
 		let pkb = id2pk(idb);
-		println!("Alice na: {:?}", na);
-		println!("Alice nx: {:?}", nx);
+		println!("A na: {:?}", na);
+		println!("A nx: {:?}", nx);
 		if pkx == pkb {
 			println!("A ended");
 			close(c_AB);
@@ -192,8 +192,8 @@ fn b(c_BPublic: Chan<(), BPublic>, c_BA: Chan<(), BA>, ida: id, skb: skey) {
 		let c_BA = send(c_BA, ct);
 		let (c_BA, z) = recv(c_BA);
 		let z_nb = adec(&skb, z);
-		println!("Bob ny: {:?}", ny);
-		println!("Bob nb: {:?}", nb);
+		println!("B ny: {:?}", ny);
+		println!("B nb: {:?}", nb);
 		if z_nb == nb {
 			println!("B ended");
 			close(c_BA);
